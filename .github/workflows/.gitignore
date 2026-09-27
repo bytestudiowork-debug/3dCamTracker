@@ -1,0 +1,37 @@
+# Gradle
+.gradle/
+build/
+app/build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Local config (machine-specific SDK path — never commit this)
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+.navigation/
+captures/
+
+# Native build (NDK/CMake)
+.cxx/
+.externalNativeBuild/
+
+# Build outputs
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Logs
+*.log
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Keystores — never commit signing keys
+*.jks
+*.keystore

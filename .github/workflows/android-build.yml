@@ -1,8 +1,5 @@
 name: Android CI Build
 
-# Builds run entirely on GitHub's runners - this project is developed on a
-# low-end laptop with no local Android SDK/emulator, so this workflow is the
-# only place APKs actually get compiled.
 on:
   push:
     branches: [ "main", "master" ]
@@ -31,10 +28,21 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The action's default ("tools platform-tools") includes the
+          # legacy monolithic "tools" package, which Google removed from
+          # the SDK repo - sdkmanager fails to find it and the step dies.
+          # We only need platform-tools here; build-tools/platform/NDK/
+          # CMake are installed explicitly in the next step.
+          packages: "platform-tools"
 
-      - name: Install NDK + CMake
+      - name: Install SDK platform, build-tools, NDK + CMake
         run: |
-          sdkmanager --install "ndk;27.0.12077973" "cmake;3.22.1" > /dev/null
+          sdkmanager --install \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            "ndk;27.0.12077973" \
+            "cmake;3.22.1"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -50,8 +58,6 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      # Native build logs are the first thing worth pulling when a C++
-      # change breaks CI but not the local Kotlin compile step.
       - name: Upload CMake/NDK logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
