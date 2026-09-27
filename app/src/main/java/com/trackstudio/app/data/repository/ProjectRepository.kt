@@ -1,3 +1,4 @@
+```kotlin
 package com.trackstudio.app.data.repository
 
 import android.content.Context
@@ -10,19 +11,14 @@ import org.json.JSONObject
 import java.io.File
 
 /**
- * Deliberately file-based (org.json, already in the Android SDK) rather
- * than Room/SQLite for Phase 1 - a project's metadata is a handful of
- * scalar fields plus a frame-URI list, which a single JSON file handles
- * without pulling in a database dependency this module doesn't need yet.
- * Swappable for Room later behind this same interface if project count or
- * query needs grow.
+ * File-based project metadata storage for Phase 1.
+ *
+ * Each project gets its own directory containing project.json.
+ * This keeps the implementation lightweight and avoids adding a database
+ * dependency before the project-management requirements need one.
  */
 class ProjectRepository(private val context: Context) {
 
-    /** Note: only project-level metadata is persisted here; the actual frame
-     * Uri list is intentionally NOT written to disk yet - SAF permissions
-     * are per-launch unless taken as persistable, which the "recent
-     * projects" flow will need to do explicitly in a later module. */
     fun saveProjectMetadata(settings: ProjectSettings): File {
         val dir = FileUtils.projectCacheDir(context, settings.id)
         val file = File(dir, "project.json")
@@ -32,19 +28,87 @@ class ProjectRepository(private val context: Context) {
 
     fun listRecentProjectDirs(): List<File> {
         val root = File(context.getExternalFilesDir(null), "projects")
-        if (!root.exists()) return emptyList()
-        return root.listFiles { f -> f.isDirectory && File(f, "project.json").exists() }
+
+        if (!root.exists()) {
+            return emptyList()
+        }
+
+        return root
+            .listFiles { file ->
+                file.isDirectory && File(file, "project.json").exists()
+            }
             ?.sortedByDescending { it.lastModified() }
             ?: emptyList()
     }
 
     fun loadProjectMetadata(projectDir: File): ProjectSettings? {
         val file = File(projectDir, "project.json")
-        if (!file.exists()) return null
+
+        if (!file.exists()) {
+            return null
+        }
+
         return try {
             fromJson(JSONObject(file.readText()))
         } catch (t: Throwable) {
             null
+        }
+    }
+
+    /**
+     * Rename a project and update its metadata file.
+     */
+    fun renameProject(
+        projectId: String,
+        newName: String
+    ): Boolean {
+        val cleanName = newName.trim()
+
+        if (cleanName.isEmpty()) {
+            return false
+        }
+
+        val root = File(context.getExternalFilesDir(null), "projects")
+        val projectDir = File(root, projectId)
+        val metadataFile = File(projectDir, "project.json")
+
+        if (!metadataFile.exists()) {
+            return false
+        }
+
+        return try {
+            val json = JSONObject(metadataFile.readText())
+            json.put("projectName", cleanName)
+            metadataFile.writeText(json.toString(2))
+
+            // Update modification time so renamed projects remain visible
+            // in the recent-project list.
+            projectDir.setLastModified(System.currentTimeMillis())
+
+            true
+        } catch (t: Throwable) {
+            false
+        }
+    }
+
+    /**
+     * Delete the complete project directory.
+     *
+     * The project directory is private app storage, so recursive deletion
+     * also removes generated proxy/cache files belonging to the project.
+     */
+    fun deleteProject(projectId: String): Boolean {
+        val root = File(context.getExternalFilesDir(null), "projects")
+        val projectDir = File(root, projectId)
+
+        if (!projectDir.exists()) {
+            return false
+        }
+
+        return try {
+            projectDir.deleteRecursively()
+        } catch (t: Throwable) {
+            false
         }
     }
 
@@ -69,16 +133,20 @@ class ProjectRepository(private val context: Context) {
         projectName = json.optString("projectName", ""),
         frameRate = json.optDouble("frameRate", 24.0),
         sensorWidthMm = json.optDouble("sensorWidthMm", 36.0),
-        colorSpace = runCatching { ColorSpace.valueOf(json.optString("colorSpace", "SRGB")) }
-            .getOrDefault(ColorSpace.SRGB),
+        colorSpace = runCatching {
+            ColorSpace.valueOf(
+                json.optString("colorSpace", "SRGB")
+            )
+        }.getOrDefault(ColorSpace.SRGB),
         proxy = ProxySettings(
             enabled = json.optBoolean("proxyEnabled", true),
             resolution = runCatching {
-                ProxyResolution.valueOf(json.optString("proxyResolution", "HALF"))
+                ProxyResolution.valueOf(
+                    json.optString("proxyResolution", "HALF")
+                )
             }.getOrDefault(ProxyResolution.HALF),
             jpegQuality = json.optInt("proxyJpegQuality", 85)
         )
-        // Note: footage frame list is not reconstructed from disk yet (see
-        // saveProjectMetadata comment) - only summary fields round-trip.
     )
 }
+```
