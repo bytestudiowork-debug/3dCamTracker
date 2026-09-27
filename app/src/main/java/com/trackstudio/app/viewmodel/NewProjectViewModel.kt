@@ -17,99 +17,161 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
 
-/**
- * Owns all state and side effects for Module 1. The Compose screen only
- * reads [uiState] and calls [onEvent] - it never touches ImageSequenceImporter,
- * ProjectRepository, or android.net.Uri handling directly, which is the
- * "UI changes won't touch logic" separation that was asked for.
- *
- * [appContext] is the Application context (safe to hold across
- * configuration changes - never pass an Activity context in here).
- */
 class NewProjectViewModel(
     private val appContext: Context,
     private val importer: ImageSequenceImporter,
     private val repository: ProjectRepository
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(NewProjectUiState())
-    val uiState: StateFlow<NewProjectUiState> = _uiState.asStateFlow()
+    private val _uiState = MutableStateFlow(
+        NewProjectUiState()
+    )
 
-    private val pendingProjectId: String = UUID.randomUUID().toString()
+    val uiState: StateFlow<NewProjectUiState> =
+        _uiState.asStateFlow()
+
+    private val pendingProjectId: String =
+        UUID.randomUUID().toString()
 
     fun onEvent(event: NewProjectEvent) {
-        when (event) {
-            is NewProjectEvent.ProjectNameChanged ->
-                _uiState.update { it.copy(projectName = event.name) }
 
-            is NewProjectEvent.FramesSelected -> importFrames(event.uris)
+        when (event) {
+
+            is NewProjectEvent.ProjectNameChanged ->
+                _uiState.update {
+                    it.copy(projectName = event.name)
+                }
+
+            is NewProjectEvent.FramesFolderSelected ->
+                importFramesFolder(event.folderUri)
 
             is NewProjectEvent.ProxyEnabledChanged ->
-                _uiState.update { it.copy(proxySettings = it.proxySettings.copy(enabled = event.enabled)) }
+                _uiState.update {
+                    it.copy(
+                        proxySettings =
+                            it.proxySettings.copy(
+                                enabled = event.enabled
+                            )
+                    )
+                }
 
             is NewProjectEvent.ProxyResolutionChanged ->
-                _uiState.update { it.copy(proxySettings = it.proxySettings.copy(resolution = event.resolution)) }
+                _uiState.update {
+                    it.copy(
+                        proxySettings =
+                            it.proxySettings.copy(
+                                resolution = event.resolution
+                            )
+                    )
+                }
 
             is NewProjectEvent.ProxyQualityChanged ->
-                _uiState.update { it.copy(proxySettings = it.proxySettings.copy(jpegQuality = event.quality)) }
+                _uiState.update {
+                    it.copy(
+                        proxySettings =
+                            it.proxySettings.copy(
+                                jpegQuality = event.quality
+                            )
+                    )
+                }
 
             is NewProjectEvent.FrameRateChanged ->
-                _uiState.update { it.copy(frameRate = event.fps) }
+                _uiState.update {
+                    it.copy(frameRate = event.fps)
+                }
 
             is NewProjectEvent.SensorWidthChanged ->
-                _uiState.update { it.copy(sensorWidthMm = event.mm) }
+                _uiState.update {
+                    it.copy(sensorWidthMm = event.mm)
+                }
 
             is NewProjectEvent.ColorSpaceChanged ->
-                _uiState.update { it.copy(colorSpace = event.colorSpace) }
+                _uiState.update {
+                    it.copy(colorSpace = event.colorSpace)
+                }
 
-            NewProjectEvent.CreateProject -> createProject()
+            NewProjectEvent.CreateProject ->
+                createProject()
 
             NewProjectEvent.DismissError ->
-                _uiState.update { it.copy(importError = null) }
+                _uiState.update {
+                    it.copy(importError = null)
+                }
         }
     }
 
-    private fun importFrames(uris: List<Uri>) {
+    private fun importFramesFolder(folderUri: Uri) {
+
         _uiState.update {
             it.copy(
                 importPhase = ImportPhase.PROBING,
                 importError = null,
-                probingProgress = 0 to uris.size
+                probingProgress = 0 to 0,
+                probingCurrentName = ""
             )
         }
 
         viewModelScope.launch {
-            importer.probeSequence(uris).collect { progress ->
-                when (progress) {
-                    is ImportProgress.Probing -> _uiState.update {
-                        it.copy(
-                            probingProgress = progress.done to progress.total,
-                            probingCurrentName = progress.currentName
-                        )
-                    }
 
-                    is ImportProgress.Done -> _uiState.update {
-                        val suggestProxy = progress.footage.requiresProxyByDefault
-                        it.copy(
-                            importPhase = ImportPhase.PROBED,
-                            footage = progress.footage,
-                            proxySettings = it.proxySettings.copy(
-                                enabled = suggestProxy || it.proxySettings.enabled
-                            )
-                        )
-                    }
+            importer.probeFolder(folderUri)
+                .collect { progress ->
 
-                    is ImportProgress.Failed -> _uiState.update {
-                        it.copy(importPhase = ImportPhase.FAILED, importError = progress.reason)
+                    when (progress) {
+
+                        is ImportProgress.Probing ->
+                            _uiState.update {
+                                it.copy(
+                                    probingProgress =
+                                        progress.done to progress.total,
+                                    probingCurrentName =
+                                        progress.currentName
+                                )
+                            }
+
+                        is ImportProgress.Done ->
+                            _uiState.update {
+
+                                val suggestProxy =
+                                    progress.footage
+                                        .requiresProxyByDefault
+
+                                it.copy(
+                                    importPhase =
+                                        ImportPhase.PROBED,
+
+                                    footage =
+                                        progress.footage,
+
+                                    proxySettings =
+                                        it.proxySettings.copy(
+                                            enabled =
+                                                suggestProxy ||
+                                                        it.proxySettings.enabled
+                                        )
+                                )
+                            }
+
+                        is ImportProgress.Failed ->
+                            _uiState.update {
+                                it.copy(
+                                    importPhase =
+                                        ImportPhase.FAILED,
+                                    importError =
+                                        progress.reason
+                                )
+                            }
                     }
                 }
-            }
         }
     }
 
     private fun createProject() {
+
         val state = _uiState.value
-        if (!state.canCreateProject) return
+
+        if (!state.canCreateProject) {
+            return
+        }
 
         val settings = ProjectSettings(
             id = pendingProjectId,
@@ -122,24 +184,37 @@ class NewProjectViewModel(
         )
 
         if (!state.proxySettings.enabled) {
+
             repository.saveProjectMetadata(settings)
-            _uiState.update { it.copy(creationPhase = CreationPhase.DONE) }
+
+            _uiState.update {
+                it.copy(
+                    creationPhase =
+                        CreationPhase.DONE
+                )
+            }
+
             return
         }
 
         _uiState.update {
             it.copy(
-                creationPhase = CreationPhase.GENERATING_PROXIES,
-                creationProgress = 0 to state.footage.frameCount
+                creationPhase =
+                    CreationPhase.GENERATING_PROXIES,
+
+                creationProgress =
+                    0 to state.footage.frameCount
             )
         }
 
         viewModelScope.launch {
-            val outputDir = FileUtils.proxyDir(
-                context = appContext,
-                projectId = settings.id,
-                subdir = settings.proxy.cacheSubdir
-            )
+
+            val outputDir =
+                FileUtils.proxyDir(
+                    context = appContext,
+                    projectId = settings.id,
+                    subdir = settings.proxy.cacheSubdir
+                )
 
             importer.generateProxies(
                 footage = settings.footage,
@@ -147,32 +222,63 @@ class NewProjectViewModel(
                 jpegQuality = settings.proxy.jpegQuality,
                 outputDir = outputDir
             ).collect { progress ->
+
                 when (progress) {
-                    is ProxyProgress.Generating -> _uiState.update {
-                        it.copy(creationProgress = progress.done to progress.total)
-                    }
+
+                    is ProxyProgress.Generating ->
+                        _uiState.update {
+                            it.copy(
+                                creationProgress =
+                                    progress.done to progress.total
+                            )
+                        }
 
                     is ProxyProgress.Done -> {
-                        repository.saveProjectMetadata(settings)
-                        _uiState.update { it.copy(creationPhase = CreationPhase.DONE) }
+
+                        repository.saveProjectMetadata(
+                            settings
+                        )
+
+                        _uiState.update {
+                            it.copy(
+                                creationPhase =
+                                    CreationPhase.DONE
+                            )
+                        }
                     }
 
-                    is ProxyProgress.Failed -> _uiState.update {
-                        it.copy(creationPhase = CreationPhase.FAILED, importError = progress.reason)
-                    }
+                    is ProxyProgress.Failed ->
+                        _uiState.update {
+                            it.copy(
+                                creationPhase =
+                                    CreationPhase.FAILED,
+                                importError =
+                                    progress.reason
+                            )
+                        }
                 }
             }
         }
     }
 
-    class Factory(private val appContext: Context) : androidx.lifecycle.ViewModelProvider.Factory {
+    class Factory(
+        private val appContext: Context
+    ) : androidx.lifecycle.ViewModelProvider.Factory {
+
         @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            val resolver = appContext.contentResolver
+        override fun <T : ViewModel> create(
+            modelClass: Class<T>
+        ): T {
+
+            val resolver =
+                appContext.contentResolver
+
             return NewProjectViewModel(
                 appContext = appContext,
-                importer = ImageSequenceImporter(resolver),
-                repository = ProjectRepository(appContext)
+                importer =
+                    ImageSequenceImporter(resolver),
+                repository =
+                    ProjectRepository(appContext)
             ) as T
         }
     }

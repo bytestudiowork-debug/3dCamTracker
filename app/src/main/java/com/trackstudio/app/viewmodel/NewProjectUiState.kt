@@ -5,19 +5,30 @@ import com.trackstudio.app.data.model.FootageInfo
 import com.trackstudio.app.data.model.ProxyResolution
 import com.trackstudio.app.data.model.ProxySettings
 
-enum class ImportPhase { IDLE, PROBING, PROBED, FAILED }
-enum class CreationPhase { IDLE, GENERATING_PROXIES, DONE, FAILED }
+enum class ImportPhase {
+    IDLE,
+    PROBING,
+    PROBED,
+    FAILED
+}
+
+enum class CreationPhase {
+    IDLE,
+    GENERATING_PROXIES,
+    DONE,
+    FAILED
+}
 
 /**
- * Single immutable snapshot the New Project screen renders from. The
- * ViewModel is the only thing that produces a new instance of this - the UI
- * layer never mutates state directly, it only sends [NewProjectEvent]s.
+ * Single immutable snapshot the New Project screen renders from.
  */
 data class NewProjectUiState(
     val projectName: String = "",
     val importPhase: ImportPhase = ImportPhase.IDLE,
+
     val probingProgress: Pair<Int, Int> = 0 to 0,
     val probingCurrentName: String = "",
+
     val footage: FootageInfo = FootageInfo.EMPTY,
     val importError: String? = null,
 
@@ -40,14 +51,43 @@ data class NewProjectUiState(
 }
 
 sealed class NewProjectEvent {
-    data class ProjectNameChanged(val name: String) : NewProjectEvent()
-    data class FramesSelected(val uris: List<android.net.Uri>) : NewProjectEvent()
-    data class ProxyEnabledChanged(val enabled: Boolean) : NewProjectEvent()
-    data class ProxyResolutionChanged(val resolution: ProxyResolution) : NewProjectEvent()
-    data class ProxyQualityChanged(val quality: Int) : NewProjectEvent()
-    data class FrameRateChanged(val fps: Double) : NewProjectEvent()
-    data class SensorWidthChanged(val mm: Double) : NewProjectEvent()
-    data class ColorSpaceChanged(val colorSpace: ColorSpace) : NewProjectEvent()
+
+    data class ProjectNameChanged(
+        val name: String
+    ) : NewProjectEvent()
+
+    /**
+     * A complete frames folder selected through Android's folder picker.
+     */
+    data class FramesFolderSelected(
+        val folderUri: android.net.Uri
+    ) : NewProjectEvent()
+
+    data class ProxyEnabledChanged(
+        val enabled: Boolean
+    ) : NewProjectEvent()
+
+    data class ProxyResolutionChanged(
+        val resolution: ProxyResolution
+    ) : NewProjectEvent()
+
+    data class ProxyQualityChanged(
+        val quality: Int
+    ) : NewProjectEvent()
+
+    data class FrameRateChanged(
+        val fps: Double
+    ) : NewProjectEvent()
+
+    data class SensorWidthChanged(
+        val mm: Double
+    ) : NewProjectEvent()
+
+    data class ColorSpaceChanged(
+        val colorSpace: ColorSpace
+    ) : NewProjectEvent()
+
     object CreateProject : NewProjectEvent()
+
     object DismissError : NewProjectEvent()
 }

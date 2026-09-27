@@ -1,11 +1,12 @@
 package com.trackstudio.app.data.io
 
 import android.content.ContentResolver
+import android.database.Cursor
 import android.net.Uri
+import android.provider.DocumentsContract
 import com.trackstudio.app.data.model.FootageFrame
 import com.trackstudio.app.data.model.FootageInfo
 import com.trackstudio.app.data.native.ProxyEngine
-import com.trackstudio.app.util.FileUtils
 import com.trackstudio.app.util.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -15,94 +16,155 @@ import kotlinx.coroutines.yield
 import java.io.File
 
 sealed class ImportProgress {
-    data class Probing(val done: Int, val total: Int, val currentName: String) : ImportProgress()
-    data class Done(val footage: FootageInfo) : ImportProgress()
-    data class Failed(val reason: String) : ImportProgress()
+    data class Probing(
+        val done: Int,
+        val total: Int,
+        val currentName: String
+    ) : ImportProgress()
+
+    data class Done(
+        val footage: FootageInfo
+    ) : ImportProgress()
+
+    data class Failed(
+        val reason: String
+    ) : ImportProgress()
 }
 
 sealed class ProxyProgress {
-    data class Generating(val done: Int, val total: Int) : ProxyProgress()
-    data class Done(val outputDir: File) : ProxyProgress()
-    data class Failed(val reason: String) : ProxyProgress()
+    data class Generating(
+        val done: Int,
+        val total: Int
+    ) : ProxyProgress()
+
+    data class Done(
+        val outputDir: File
+    ) : ProxyProgress()
+
+    data class Failed(
+        val reason: String
+    ) : ProxyProgress()
 }
 
-/**
- * All logic for turning a user's raw file selection into a validated
- * [FootageInfo], and later into proxy frames. Contains no Compose/UI code -
- * the ViewModel is the only thing that talks to this class, so the UI can
- * be re-skinned freely without touching import behavior.
- */
 class ImageSequenceImporter(
     private val contentResolver: ContentResolver,
     private val proxyEngine: ProxyEngine = ProxyEngine()
 ) {
 
     private val supportedExtensions = setOf(
-        "jpg", "jpeg", "png", "tif", "tiff", "webp", "bmp"
+        "jpg",
+        "jpeg",
+        "png",
+        "tif",
+        "tiff",
+        "webp",
+        "bmp"
+    )
+
+    private data class FolderImage(
+        val uri: Uri,
+        val name: String,
+        val size: Long
     )
 
     /**
-     * Probes every selected frame: reads its bytes (needed regardless, since
-     * SAF gives us no seekable random file access) and asks the native layer
-     * for width/height via a header-only decode. Emits progress so the UI
-     * can show something meaningful on a large sequence instead of a frozen
-     * spinner - this is the one part of import that scales with frame
-     * count, everything else is O(1) metadata.
+     * Reads every supported image directly inside the selected folder.
+     *
+     * The folder itself is represented by a tree Uri. We enumerate its
+     * children through DocumentsContract instead of asking the user to
+     * manually select every frame.
      */
-    fun probeSequence(uris: List<Uri>): Flow<ImportProgress> = flow {
-        if (uris.isEmpty()) {
-            emit(ImportProgress.Failed("No files selected."))
+    fun probeFolder(folderUri: Uri): Flow<ImportProgress> = flow {
+
+        val images = try {
+            scanFolder(folderUri)
+        } catch (t: Throwable) {
+            Logger.e("Failed to scan frames folder", t)
+            emit(
+                ImportProgress.Failed(
+                    "Could not read the selected folder."
+                )
+            )
             return@flow
         }
 
-        data class Named(val uri: Uri, val name: String, val size: Long)
-
-        val named = uris.map { uri ->
-            val (name, size) = FileUtils.queryNameAndSize(contentResolver, uri)
-            Named(uri, name, size)
-        }
-
-        val rejectedExt = named.filter { it.name.substringAfterLast('.', "").lowercase() !in supportedExtensions }
-        if (rejectedExt.size == named.size) {
-            emit(ImportProgress.Failed("None of the selected files are a supported image type."))
+        if (images.isEmpty()) {
+            emit(
+                ImportProgress.Failed(
+                    "No supported image frames were found in the selected folder."
+                )
+            )
             return@flow
         }
 
-        val candidates = named - rejectedExt.toSet()
-        val orderedNames = ImageSequenceValidator.sortNaturally(candidates.map { it.name })
-        val byName = candidates.associateBy { it.name }
-        val orderedCandidates = orderedNames.mapNotNull { byName[it] }
+        val orderedImages = ImageSequenceValidator.sortNaturally(
+            images.map { it.name }
+        ).mapNotNull { name ->
+            images.firstOrNull { it.name == name }
+        }
 
-        val frames = ArrayList<FootageFrame>(orderedCandidates.size)
+        val frames = ArrayList<FootageFrame>(orderedImages.size)
+
         var widthSeen = -1
         var heightSeen = -1
         var consistent = true
 
-        orderedCandidates.forEachIndexed { index, item ->
-            emit(ImportProgress.Probing(index, orderedCandidates.size, item.name))
+        orderedImages.forEachIndexed { index, item ->
+
+            emit(
+                ImportProgress.Probing(
+                    done = index,
+                    total = orderedImages.size,
+                    currentName = item.name
+                )
+            )
 
             val bytes = try {
-                contentResolver.openInputStream(item.uri)?.use { it.readBytes() }
+                contentResolver.openInputStream(item.uri)?.use {
+                    it.readBytes()
+                }
             } catch (t: Throwable) {
-                Logger.e("Failed reading ${item.name}", t)
+                Logger.e(
+                    "Failed reading ${item.name}",
+                    t
+                )
                 null
             }
 
             if (bytes == null) {
-                Logger.e("Skipping unreadable frame: ${item.name}")
+                Logger.e(
+                    "Skipping unreadable frame: ${item.name}"
+                )
                 return@forEachIndexed
             }
 
-            val info = proxyEngine.nativeProbeImage(bytes)
+            val info = try {
+                proxyEngine.nativeProbeImage(bytes)
+            } catch (t: Throwable) {
+                Logger.e(
+                    "Image probe failed for ${item.name}",
+                    t
+                )
+                intArrayOf()
+            }
+
             if (info.size < 2) {
-                Logger.e("Skipping non-decodable frame: ${item.name}")
+                Logger.e(
+                    "Skipping non-decodable frame: ${item.name}"
+                )
                 return@forEachIndexed
             }
 
-            val (w, h) = info[0] to info[1]
+            val width = info[0]
+            val height = info[1]
+
             if (widthSeen == -1) {
-                widthSeen = w; heightSeen = h
-            } else if (w != widthSeen || h != heightSeen) {
+                widthSeen = width
+                heightSeen = height
+            } else if (
+                width != widthSeen ||
+                height != heightSeen
+            ) {
                 consistent = false
             }
 
@@ -110,24 +172,27 @@ class ImageSequenceImporter(
                 uri = item.uri,
                 displayName = item.name,
                 index = index,
-                width = w,
-                height = h,
+                width = width,
+                height = height,
                 sizeBytes = item.size
             )
 
-            // Yields the probing loop back to the dispatcher between frames
-            // so a huge sequence can't starve other coroutines sharing the
-            // IO dispatcher's thread pool.
             yield()
         }
 
         if (frames.isEmpty()) {
-            emit(ImportProgress.Failed("No frame in the selection could be decoded."))
+            emit(
+                ImportProgress.Failed(
+                    "No frame in the selected folder could be decoded."
+                )
+            )
             return@flow
         }
 
-        val pattern = ImageSequenceValidator.describeSequence(frames.map { it.displayName })
-            ?: "${frames.size} stills (no common numbering pattern detected)"
+        val pattern =
+            ImageSequenceValidator.describeSequence(
+                frames.map { it.displayName }
+            ) ?: "${frames.size} stills (no common numbering pattern detected)"
 
         emit(
             ImportProgress.Done(
@@ -142,14 +207,119 @@ class ImageSequenceImporter(
                 )
             )
         )
+
     }.flowOn(Dispatchers.IO)
 
     /**
-     * Generates one proxy JPEG per frame into [outputDir]. Re-reads each
-     * source frame's bytes rather than caching them from the probe pass -
-     * trading one extra I/O pass for not holding potentially gigabytes of
-     * decoded/raw frame data in memory, which is the constraint that
-     * actually matters on a low-end device.
+     * Enumerates direct children of a SAF folder.
+     *
+     * Only metadata is read here. Actual image bytes are opened later,
+     * one frame at a time, during probing/proxy generation.
+     */
+    private fun scanFolder(folderUri: Uri): List<FolderImage> {
+
+        val documentId =
+            DocumentsContract.getTreeDocumentId(folderUri)
+
+        val childrenUri =
+            DocumentsContract.buildChildDocumentsUriUsingTree(
+                folderUri,
+                documentId
+            )
+
+        val results = ArrayList<FolderImage>()
+
+        val projection = arrayOf(
+            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            DocumentsContract.Document.COLUMN_SIZE,
+            DocumentsContract.Document.COLUMN_MIME_TYPE
+        )
+
+        contentResolver.query(
+            childrenUri,
+            projection,
+            null,
+            null,
+            null
+        )?.use { cursor ->
+
+            val idIndex = cursor.getColumnIndex(
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID
+            )
+
+            val nameIndex = cursor.getColumnIndex(
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME
+            )
+
+            val sizeIndex = cursor.getColumnIndex(
+                DocumentsContract.Document.COLUMN_SIZE
+            )
+
+            val mimeIndex = cursor.getColumnIndex(
+                DocumentsContract.Document.COLUMN_MIME_TYPE
+            )
+
+            while (cursor.moveToNext()) {
+
+                val documentIdValue =
+                    cursor.getString(idIndex)
+
+                val name =
+                    cursor.getString(nameIndex) ?: continue
+
+                val mimeType =
+                    if (mimeIndex >= 0) {
+                        cursor.getString(mimeIndex)
+                    } else {
+                        null
+                    }
+
+                val size =
+                    if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) {
+                        cursor.getLong(sizeIndex)
+                    } else {
+                        0L
+                    }
+
+                // Ignore subfolders. The user selected a frames folder;
+                // we intentionally do not recursively scan unrelated
+                // directories inside it.
+                if (
+                    mimeType == DocumentsContract.Document.MIME_TYPE_DIR
+                ) {
+                    continue
+                }
+
+                val extension =
+                    name.substringAfterLast('.', "")
+                        .lowercase()
+
+                if (extension !in supportedExtensions) {
+                    continue
+                }
+
+                val fileUri =
+                    DocumentsContract.buildDocumentUriUsingTree(
+                        folderUri,
+                        documentIdValue
+                    )
+
+                results += FolderImage(
+                    uri = fileUri,
+                    name = name,
+                    size = size
+                )
+            }
+        }
+
+        return results
+    }
+
+    /**
+     * Generates one proxy JPEG per frame.
+     *
+     * Source frame bytes are deliberately not cached from the probe pass.
      */
     fun generateProxies(
         footage: FootageInfo,
@@ -157,29 +327,59 @@ class ImageSequenceImporter(
         jpegQuality: Int,
         outputDir: File
     ): Flow<ProxyProgress> = flow {
-        if (!outputDir.exists()) outputDir.mkdirs()
+
+        if (!outputDir.exists()) {
+            outputDir.mkdirs()
+        }
 
         footage.frames.forEachIndexed { index, frame ->
-            emit(ProxyProgress.Generating(index, footage.frames.size))
+
+            emit(
+                ProxyProgress.Generating(
+                    done = index,
+                    total = footage.frames.size
+                )
+            )
 
             val bytes = try {
-                contentResolver.openInputStream(frame.uri)?.use { it.readBytes() }
+                contentResolver.openInputStream(frame.uri)?.use {
+                    it.readBytes()
+                }
             } catch (t: Throwable) {
-                Logger.e("Proxy source read failed for ${frame.displayName}", t)
+                Logger.e(
+                    "Proxy source read failed for ${frame.displayName}",
+                    t
+                )
                 null
             }
 
-            if (bytes == null) return@forEachIndexed
+            if (bytes == null) {
+                return@forEachIndexed
+            }
 
-            val dstFile = File(outputDir, "proxy_%05d.jpg".format(frame.index))
-            val ok = proxyEngine.nativeGenerateProxy(bytes, dstFile.absolutePath, scale, jpegQuality)
+            val dstFile = File(
+                outputDir,
+                "proxy_%05d.jpg".format(frame.index)
+            )
+
+            val ok = proxyEngine.nativeGenerateProxy(
+                bytes,
+                dstFile.absolutePath,
+                scale,
+                jpegQuality
+            )
+
             if (!ok) {
-                Logger.e("Proxy generation failed for ${frame.displayName}")
+                Logger.e(
+                    "Proxy generation failed for ${frame.displayName}"
+                )
             }
 
             yield()
         }
 
-        emit(ProxyProgress.Done(outputDir))
+        emit(
+            ProxyProgress.Done(outputDir)
+        )
     }.flowOn(Dispatchers.IO)
 }
