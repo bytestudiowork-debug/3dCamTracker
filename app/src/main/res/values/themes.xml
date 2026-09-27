@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base platform theme only; all real theming happens in Compose
+         (ui/theme/Theme.kt) so it stays swappable without touching XML. -->
+    <style name="Theme.TrackStudio" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#1B1D22</item>
+        <item name="android:navigationBarColor">#1B1D22</item>
+        <item name="android:windowBackground">#1B1D22</item>
+    </style>
+</resources>
