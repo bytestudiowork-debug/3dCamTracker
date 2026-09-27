@@ -1,4 +1,3 @@
-```kotlin
 package com.trackstudio.app
 
 import android.content.pm.ActivityInfo

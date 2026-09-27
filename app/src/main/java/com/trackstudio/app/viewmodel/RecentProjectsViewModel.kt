@@ -1,6 +1,4 @@
-```kotlin
 package com.trackstudio.app.viewmodel
-
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider

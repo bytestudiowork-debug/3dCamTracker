@@ -1,4 +1,3 @@
-```kotlin
 package com.trackstudio.app.ui.recentprojects
 
 import androidx.compose.foundation.layout.Arrangement
