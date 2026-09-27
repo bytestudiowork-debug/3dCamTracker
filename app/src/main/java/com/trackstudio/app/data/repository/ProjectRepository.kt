@@ -26,7 +26,7 @@ class ProjectRepository(private val context: Context) {
     fun saveProjectMetadata(settings: ProjectSettings): File {
         val dir = FileUtils.projectCacheDir(context, settings.id)
         val file = File(dir, "project.json")
-        file.writeText(toJson(settings).toString(indent = 2))
+        file.writeText(toJson(settings).toString(2))
         return file
     }
 
