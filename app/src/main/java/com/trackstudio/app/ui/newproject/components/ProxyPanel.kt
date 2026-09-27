@@ -252,4 +252,4 @@ private fun ResolutionDropdown(
         }
     }
 }
-```
+
