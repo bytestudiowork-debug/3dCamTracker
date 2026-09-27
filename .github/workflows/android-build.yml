@@ -2,10 +2,10 @@ name: Android CI Build
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
   pull_request:
-    branches: [ "main", "master" ]
-  workflow_dispatch: {}
+    branches: ["main", "master"]
+  workflow_dispatch:
 
 concurrency:
   group: android-build-${{ github.ref }}
@@ -29,11 +29,6 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          # The action's default ("tools platform-tools") includes the
-          # legacy monolithic "tools" package, which Google removed from
-          # the SDK repo - sdkmanager fails to find it and the step dies.
-          # We only need platform-tools here; build-tools/platform/NDK/
-          # CMake are installed explicitly in the next step.
           packages: "platform-tools"
 
       - name: Install SDK platform, build-tools, NDK + CMake
@@ -47,8 +42,14 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Make Gradle Wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Show Gradle version
+        run: ./gradlew --version
+
       - name: Build debug APK
-        run: gradle assembleDebug --stacktrace --no-daemon
+        run: ./gradlew assembleDebug --stacktrace --no-daemon
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
