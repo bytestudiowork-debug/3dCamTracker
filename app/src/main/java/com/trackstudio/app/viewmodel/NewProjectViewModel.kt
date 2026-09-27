@@ -1,6 +1,7 @@
 package com.trackstudio.app.viewmodel
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -23,15 +24,33 @@ class NewProjectViewModel(
     private val repository: ProjectRepository
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(
-        NewProjectUiState()
-    )
+    private val _uiState =
+        MutableStateFlow(NewProjectUiState())
 
     val uiState: StateFlow<NewProjectUiState> =
         _uiState.asStateFlow()
 
-    private val pendingProjectId: String =
+    private val pendingProjectId =
         UUID.randomUUID().toString()
+
+    /**
+     * The folder selected through SAF.
+     *
+     * Stored separately from FootageInfo because FootageInfo describes
+     * the imported sequence, while this URI identifies its source.
+     */
+    private var selectedFolderUri: Uri? = null
+
+    /**
+     * Completed project configuration.
+     *
+     * MainActivity can use this to immediately open the Viewer.
+     */
+    private var completedProjectSettings: ProjectSettings? = null
+
+    fun getCompletedProjectSettings(): ProjectSettings? {
+        return completedProjectSettings
+    }
 
     fun onEvent(event: NewProjectEvent) {
 
@@ -39,7 +58,9 @@ class NewProjectViewModel(
 
             is NewProjectEvent.ProjectNameChanged ->
                 _uiState.update {
-                    it.copy(projectName = event.name)
+                    it.copy(
+                        projectName = event.name
+                    )
                 }
 
             is NewProjectEvent.FramesFolderSelected ->
@@ -77,17 +98,23 @@ class NewProjectViewModel(
 
             is NewProjectEvent.FrameRateChanged ->
                 _uiState.update {
-                    it.copy(frameRate = event.fps)
+                    it.copy(
+                        frameRate = event.fps
+                    )
                 }
 
             is NewProjectEvent.SensorWidthChanged ->
                 _uiState.update {
-                    it.copy(sensorWidthMm = event.mm)
+                    it.copy(
+                        sensorWidthMm = event.mm
+                    )
                 }
 
             is NewProjectEvent.ColorSpaceChanged ->
                 _uiState.update {
-                    it.copy(colorSpace = event.colorSpace)
+                    it.copy(
+                        colorSpace = event.colorSpace
+                    )
                 }
 
             NewProjectEvent.CreateProject ->
@@ -95,12 +122,21 @@ class NewProjectViewModel(
 
             NewProjectEvent.DismissError ->
                 _uiState.update {
-                    it.copy(importError = null)
+                    it.copy(
+                        importError = null
+                    )
                 }
         }
     }
 
     private fun importFramesFolder(folderUri: Uri) {
+
+        /**
+         * Keep permission after the app restarts.
+         */
+        takePersistableReadPermission(folderUri)
+
+        selectedFolderUri = folderUri
 
         _uiState.update {
             it.copy(
@@ -123,6 +159,7 @@ class NewProjectViewModel(
                                 it.copy(
                                     probingProgress =
                                         progress.done to progress.total,
+
                                     probingCurrentName =
                                         progress.currentName
                                 )
@@ -132,7 +169,8 @@ class NewProjectViewModel(
                             _uiState.update {
 
                                 val suggestProxy =
-                                    progress.footage
+                                    progress
+                                        .footage
                                         .requiresProxyByDefault
 
                                 it.copy(
@@ -146,7 +184,7 @@ class NewProjectViewModel(
                                         it.proxySettings.copy(
                                             enabled =
                                                 suggestProxy ||
-                                                        it.proxySettings.enabled
+                                                    it.proxySettings.enabled
                                         )
                                 )
                             }
@@ -156,6 +194,7 @@ class NewProjectViewModel(
                                 it.copy(
                                     importPhase =
                                         ImportPhase.FAILED,
+
                                     importError =
                                         progress.reason
                                 )
@@ -165,27 +204,70 @@ class NewProjectViewModel(
         }
     }
 
+    private fun takePersistableReadPermission(
+        folderUri: Uri
+    ) {
+        try {
+
+            appContext.contentResolver.takePersistableUriPermission(
+                folderUri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+
+        } catch (_: SecurityException) {
+
+            /**
+             * Some providers do not support persistent permissions.
+             *
+             * The import can still work during the current session.
+             * Reopening that project later may require relinking the folder.
+             */
+        }
+    }
+
     private fun createProject() {
 
         val state = _uiState.value
+        val sourceUri = selectedFolderUri
 
-        if (!state.canCreateProject) {
+        if (
+            !state.canCreateProject ||
+            sourceUri == null
+        ) {
             return
         }
 
-        val settings = ProjectSettings(
-            id = pendingProjectId,
-            projectName = state.projectName,
-            footage = state.footage,
-            proxy = state.proxySettings,
-            frameRate = state.frameRate,
-            sensorWidthMm = state.sensorWidthMm,
-            colorSpace = state.colorSpace
-        )
+        val settings =
+            ProjectSettings(
+                id = pendingProjectId,
+
+                projectName =
+                    state.projectName.trim(),
+
+                sourceFolderUri =
+                    sourceUri.toString(),
+
+                footage =
+                    state.footage,
+
+                proxy =
+                    state.proxySettings,
+
+                frameRate =
+                    state.frameRate,
+
+                sensorWidthMm =
+                    state.sensorWidthMm,
+
+                colorSpace =
+                    state.colorSpace
+            )
 
         if (!state.proxySettings.enabled) {
 
             repository.saveProjectMetadata(settings)
+
+            completedProjectSettings = settings
 
             _uiState.update {
                 it.copy(
@@ -229,7 +311,8 @@ class NewProjectViewModel(
                         _uiState.update {
                             it.copy(
                                 creationProgress =
-                                    progress.done to progress.total
+                                    progress.done to
+                                        progress.total
                             )
                         }
 
@@ -238,6 +321,9 @@ class NewProjectViewModel(
                         repository.saveProjectMetadata(
                             settings
                         )
+
+                        completedProjectSettings =
+                            settings
 
                         _uiState.update {
                             it.copy(
@@ -252,6 +338,7 @@ class NewProjectViewModel(
                             it.copy(
                                 creationPhase =
                                     CreationPhase.FAILED,
+
                                 importError =
                                     progress.reason
                             )
@@ -275,10 +362,16 @@ class NewProjectViewModel(
 
             return NewProjectViewModel(
                 appContext = appContext,
+
                 importer =
-                    ImageSequenceImporter(resolver),
+                    ImageSequenceImporter(
+                        resolver
+                    ),
+
                 repository =
-                    ProjectRepository(appContext)
+                    ProjectRepository(
+                        appContext
+                    )
             ) as T
         }
     }

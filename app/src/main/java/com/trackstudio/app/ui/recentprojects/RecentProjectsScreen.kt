@@ -18,12 +18,13 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,62 +59,119 @@ fun RecentProjectsScreen(
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(28.dp)
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(28.dp)
     ) {
+
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+            modifier =
+                Modifier.fillMaxWidth(),
+            verticalAlignment =
+                Alignment.CenterVertically
         ) {
+
             DesktopButton(
                 text = "← Back",
                 onClick = onBack
             )
 
-            Spacer(Modifier.width(20.dp))
+            Spacer(
+                Modifier.width(20.dp)
+            )
 
             Text(
                 text = "Recent Projects",
-                style = androidx.compose.material3.MaterialTheme.typography.headlineSmall
+                style =
+                    MaterialTheme
+                        .typography
+                        .headlineSmall
             )
         }
 
-        Spacer(Modifier.padding(top = 20.dp))
+        Spacer(
+            Modifier.padding(
+                top = 20.dp
+            )
+        )
 
         Panel(
             title = "Projects",
-            modifier = Modifier.fillMaxSize()
+            modifier =
+                Modifier.fillMaxSize()
         ) {
-            if (state.projects.isEmpty()) {
+
+            if (state.isLoading) {
+
                 Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
+                    modifier =
+                        Modifier.fillMaxSize(),
+                    contentAlignment =
+                        Alignment.Center
                 ) {
+
+                    Text(
+                        text = "Loading projects...",
+                        color = TextSecondary
+                    )
+                }
+
+            } else if (state.projects.isEmpty()) {
+
+                Box(
+                    modifier =
+                        Modifier.fillMaxSize(),
+                    contentAlignment =
+                        Alignment.Center
+                ) {
+
                     Text(
                         text = "No recent projects.",
                         color = TextSecondary
                     )
                 }
+
             } else {
+
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier =
+                        Modifier.fillMaxSize(),
+
+                    verticalArrangement =
+                        Arrangement.spacedBy(8.dp)
                 ) {
+
                     items(
                         items = state.projects,
-                        key = { it.id }
+                        key = { project ->
+                            project.id
+                        }
                     ) { project ->
+
                         ProjectRow(
                             project = project,
+
                             onEdit = {
+                                /*
+                                 * Pass the complete project
+                                 * configuration to MainActivity.
+                                 *
+                                 * MainActivity then asks
+                                 * ProjectLoader to rescan the
+                                 * saved source folder.
+                                 */
                                 onEditProject(project)
                             },
+
                             onRename = {
-                                renameProject = project
+                                renameProject =
+                                    project
                             },
+
                             onDelete = {
-                                deleteProject = project
+                                deleteProject =
+                                    project
                             }
                         )
                     }
@@ -122,30 +180,50 @@ fun RecentProjectsScreen(
         }
     }
 
+    /*
+     * Rename dialog
+     */
     renameProject?.let { project ->
+
         RenameProjectDialog(
+
             project = project,
+
             onDismiss = {
                 renameProject = null
             },
+
             onRename = { newName ->
+
                 viewModel.renameProject(
                     projectId = project.id,
                     newName = newName
                 )
+
                 renameProject = null
             }
         )
     }
 
+    /*
+     * Delete confirmation
+     */
     deleteProject?.let { project ->
+
         DeleteProjectDialog(
+
             project = project,
+
             onDismiss = {
                 deleteProject = null
             },
+
             onConfirm = {
-                viewModel.deleteProject(project.id)
+
+                viewModel.deleteProject(
+                    project.id
+                )
+
                 deleteProject = null
             }
         )
@@ -159,72 +237,121 @@ private fun ProjectRow(
     onRename: () -> Unit,
     onDelete: () -> Unit
 ) {
+
     var menuExpanded by remember {
         mutableStateOf(false)
     }
 
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = 8.dp,
+                    vertical = 6.dp
+                ),
+
+        verticalAlignment =
+            Alignment.CenterVertically
     ) {
+
         Column(
-            modifier = Modifier.weight(1f)
+            modifier =
+                Modifier.weight(1f)
         ) {
+
             Text(
-                text = project.projectName.ifBlank {
-                    "Untitled Project"
-                },
-                style = androidx.compose.material3.MaterialTheme.typography.bodyLarge
+                text =
+                    project.projectName.ifBlank {
+                        "Untitled Project"
+                    },
+
+                style =
+                    MaterialTheme
+                        .typography
+                        .bodyLarge
             )
 
             Text(
-                text = "${project.footage.frameCount} frames · " +
-                    "${project.footage.width} × ${project.footage.height}",
-                color = TextSecondary,
-                style = androidx.compose.material3.MaterialTheme.typography.bodyMedium
+                text =
+                    buildProjectDescription(
+                        project
+                    ),
+
+                color =
+                    TextSecondary,
+
+                style =
+                    MaterialTheme
+                        .typography
+                        .bodyMedium
             )
         }
 
         Box {
+
             IconButton(
                 onClick = {
                     menuExpanded = true
                 }
             ) {
+
                 Icon(
-                    imageVector = Icons.Default.MoreVert,
-                    contentDescription = "Project actions"
+                    imageVector =
+                        Icons.Default.MoreVert,
+
+                    contentDescription =
+                        "Project actions"
                 )
             }
 
             DropdownMenu(
-                expanded = menuExpanded,
+                expanded =
+                    menuExpanded,
+
                 onDismissRequest = {
                     menuExpanded = false
                 }
             ) {
+
                 DropdownMenuItem(
-                    text = { Text("Edit") },
+
+                    text = {
+                        Text("Edit")
+                    },
+
                     onClick = {
+
                         menuExpanded = false
+
                         onEdit()
                     }
                 )
 
                 DropdownMenuItem(
-                    text = { Text("Rename") },
+
+                    text = {
+                        Text("Rename")
+                    },
+
                     onClick = {
+
                         menuExpanded = false
+
                         onRename()
                     }
                 )
 
                 DropdownMenuItem(
-                    text = { Text("Delete") },
+
+                    text = {
+                        Text("Delete")
+                    },
+
                     onClick = {
+
                         menuExpanded = false
+
                         onDelete()
                     }
                 )
@@ -233,44 +360,106 @@ private fun ProjectRow(
     }
 }
 
+private fun buildProjectDescription(
+    project: ProjectSettings
+): String {
+
+    val frameText =
+        "${project.footage.frameCount} frames"
+
+    val resolutionText =
+        if (
+            project.footage.width > 0 &&
+            project.footage.height > 0
+        ) {
+            "${project.footage.width} × " +
+                "${project.footage.height}"
+        } else {
+            "Unknown resolution"
+        }
+
+    val fpsText =
+        if (
+            project.frameRate ==
+            project.frameRate.toLong().toDouble()
+        ) {
+            "${project.frameRate.toLong()} FPS"
+        } else {
+            "%.2f FPS".format(
+                project.frameRate
+            )
+        }
+
+    return "$frameText · $resolutionText · $fpsText"
+}
+
 @Composable
 private fun RenameProjectDialog(
     project: ProjectSettings,
     onDismiss: () -> Unit,
     onRename: (String) -> Unit
 ) {
+
     var name by remember {
-        mutableStateOf(project.projectName)
+        mutableStateOf(
+            project.projectName
+        )
     }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+
+        onDismissRequest =
+            onDismiss,
+
         title = {
             Text("Rename Project")
         },
+
         text = {
+
             OutlinedTextField(
+
                 value = name,
-                onValueChange = { name = it },
+
+                onValueChange = {
+                    name = it
+                },
+
                 label = {
                     Text("Project name")
                 },
+
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+
+                modifier =
+                    Modifier.fillMaxWidth()
             )
         },
+
         confirmButton = {
+
             TextButton(
-                enabled = name.trim().isNotEmpty(),
+
+                enabled =
+                    name.trim().isNotEmpty(),
+
                 onClick = {
-                    onRename(name.trim())
+                    onRename(
+                        name.trim()
+                    )
                 }
             ) {
+
                 Text("Rename")
             }
         },
+
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+
+            TextButton(
+                onClick = onDismiss
+            ) {
+
                 Text("Cancel")
             }
         }
@@ -283,27 +472,45 @@ private fun DeleteProjectDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
+
     AlertDialog(
-        onDismissRequest = onDismiss,
+
+        onDismissRequest =
+            onDismiss,
+
         title = {
             Text("Delete Project?")
         },
+
         text = {
+
             Text(
-                "Delete \"${project.projectName.ifBlank { "Untitled Project" }}\"? " +
-                    "This will remove the project's stored files and cannot be undone."
+                "Delete \"${project.projectName.ifBlank {
+                    "Untitled Project"
+                }}\"? " +
+                    "This will remove the project's " +
+                    "stored files and cannot be undone."
             )
         },
+
         confirmButton = {
-            TextButton(onClick = onConfirm) {
+
+            TextButton(
+                onClick = onConfirm
+            ) {
+
                 Text("Delete")
             }
         },
+
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+
+            TextButton(
+                onClick = onDismiss
+            ) {
+
                 Text("Cancel")
             }
         }
     )
 }
-

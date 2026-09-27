@@ -9,24 +9,40 @@ import com.trackstudio.app.util.FileUtils
 import org.json.JSONObject
 import java.io.File
 
-/**
- * File-based project metadata storage for Phase 1.
- *
- * Each project gets its own directory containing project.json.
- * This keeps the implementation lightweight and avoids adding a database
- * dependency before the project-management requirements need one.
- */
-class ProjectRepository(private val context: Context) {
+class ProjectRepository(
+    private val context: Context
+) {
 
-    fun saveProjectMetadata(settings: ProjectSettings): File {
-        val dir = FileUtils.projectCacheDir(context, settings.id)
-        val file = File(dir, "project.json")
-        file.writeText(toJson(settings).toString(2))
+    fun saveProjectMetadata(
+        settings: ProjectSettings
+    ): File {
+
+        val dir =
+            FileUtils.projectCacheDir(
+                context,
+                settings.id
+            )
+
+        val file =
+            File(
+                dir,
+                "project.json"
+            )
+
+        file.writeText(
+            toJson(settings).toString(2)
+        )
+
         return file
     }
 
     fun listRecentProjectDirs(): List<File> {
-        val root = File(context.getExternalFilesDir(null), "projects")
+
+        val root =
+            File(
+                context.getExternalFilesDir(null),
+                "projects"
+            )
 
         if (!root.exists()) {
             return emptyList()
@@ -34,71 +50,144 @@ class ProjectRepository(private val context: Context) {
 
         return root
             .listFiles { file ->
-                file.isDirectory && File(file, "project.json").exists()
+                file.isDirectory &&
+                    File(
+                        file,
+                        "project.json"
+                    ).exists()
             }
-            ?.sortedByDescending { it.lastModified() }
+            ?.sortedByDescending {
+                it.lastModified()
+            }
             ?: emptyList()
     }
 
-    fun loadProjectMetadata(projectDir: File): ProjectSettings? {
-        val file = File(projectDir, "project.json")
+    fun loadProjectMetadata(
+        projectDir: File
+    ): ProjectSettings? {
+
+        val file =
+            File(
+                projectDir,
+                "project.json"
+            )
 
         if (!file.exists()) {
             return null
         }
 
         return try {
-            fromJson(JSONObject(file.readText()))
-        } catch (t: Throwable) {
+
+            fromJson(
+                JSONObject(
+                    file.readText()
+                )
+            )
+
+        } catch (_: Throwable) {
+
             null
         }
     }
 
-    /**
-     * Rename a project and update its metadata file.
-     */
+    fun loadProject(
+        projectId: String
+    ): ProjectSettings? {
+
+        val root =
+            File(
+                context.getExternalFilesDir(null),
+                "projects"
+            )
+
+        val projectDir =
+            File(
+                root,
+                projectId
+            )
+
+        return loadProjectMetadata(
+            projectDir
+        )
+    }
+
     fun renameProject(
         projectId: String,
         newName: String
     ): Boolean {
-        val cleanName = newName.trim()
+
+        val cleanName =
+            newName.trim()
 
         if (cleanName.isEmpty()) {
             return false
         }
 
-        val root = File(context.getExternalFilesDir(null), "projects")
-        val projectDir = File(root, projectId)
-        val metadataFile = File(projectDir, "project.json")
+        val root =
+            File(
+                context.getExternalFilesDir(null),
+                "projects"
+            )
+
+        val projectDir =
+            File(
+                root,
+                projectId
+            )
+
+        val metadataFile =
+            File(
+                projectDir,
+                "project.json"
+            )
 
         if (!metadataFile.exists()) {
             return false
         }
 
         return try {
-            val json = JSONObject(metadataFile.readText())
-            json.put("projectName", cleanName)
-            metadataFile.writeText(json.toString(2))
 
-            // Update modification time so renamed projects remain visible
-            // in the recent-project list.
-            projectDir.setLastModified(System.currentTimeMillis())
+            val json =
+                JSONObject(
+                    metadataFile.readText()
+                )
+
+            json.put(
+                "projectName",
+                cleanName
+            )
+
+            metadataFile.writeText(
+                json.toString(2)
+            )
+
+            projectDir.setLastModified(
+                System.currentTimeMillis()
+            )
 
             true
-        } catch (t: Throwable) {
+
+        } catch (_: Throwable) {
+
             false
         }
     }
 
-    /**
-     * Delete the complete project directory.
-     *
-     * The project directory is private app storage, so recursive deletion
-     * also removes generated proxy/cache files belonging to the project.
-     */
-    fun deleteProject(projectId: String): Boolean {
-        val root = File(context.getExternalFilesDir(null), "projects")
-        val projectDir = File(root, projectId)
+    fun deleteProject(
+        projectId: String
+    ): Boolean {
+
+        val root =
+            File(
+                context.getExternalFilesDir(null),
+                "projects"
+            )
+
+        val projectDir =
+            File(
+                root,
+                projectId
+            )
 
         if (!projectDir.exists()) {
             return false
@@ -106,46 +195,233 @@ class ProjectRepository(private val context: Context) {
 
         return try {
             projectDir.deleteRecursively()
-        } catch (t: Throwable) {
+        } catch (_: Throwable) {
             false
         }
     }
 
-    private fun toJson(s: ProjectSettings): JSONObject = JSONObject().apply {
-        put("id", s.id)
-        put("projectName", s.projectName)
-        put("frameRate", s.frameRate)
-        put("sensorWidthMm", s.sensorWidthMm)
-        put("colorSpace", s.colorSpace.name)
-        put("createdAtEpochMs", s.createdAtEpochMs)
-        put("footageWidth", s.footage.width)
-        put("footageHeight", s.footage.height)
-        put("footageFrameCount", s.footage.frameCount)
-        put("footagePattern", s.footage.detectedPattern)
-        put("proxyEnabled", s.proxy.enabled)
-        put("proxyResolution", s.proxy.resolution.name)
-        put("proxyJpegQuality", s.proxy.jpegQuality)
+    private fun toJson(
+        settings: ProjectSettings
+    ): JSONObject {
+
+        return JSONObject().apply {
+
+            put(
+                "id",
+                settings.id
+            )
+
+            put(
+                "projectName",
+                settings.projectName
+            )
+
+            put(
+                "sourceFolderUri",
+                settings.sourceFolderUri
+            )
+
+            put(
+                "frameRate",
+                settings.frameRate
+            )
+
+            put(
+                "sensorWidthMm",
+                settings.sensorWidthMm
+            )
+
+            put(
+                "colorSpace",
+                settings.colorSpace.name
+            )
+
+            put(
+                "createdAtEpochMs",
+                settings.createdAtEpochMs
+            )
+
+            put(
+                "footageWidth",
+                settings.footage.width
+            )
+
+            put(
+                "footageHeight",
+                settings.footage.height
+            )
+
+            put(
+                "footageFrameCount",
+                settings.footage.frameCount
+            )
+
+            put(
+                "footagePattern",
+                settings.footage.detectedPattern
+            )
+
+            put(
+                "footageTotalSizeBytes",
+                settings.footage.totalSizeBytes
+            )
+
+            put(
+                "footageResolutionConsistent",
+                settings.footage.isResolutionConsistent
+            )
+
+            put(
+                "proxyEnabled",
+                settings.proxy.enabled
+            )
+
+            put(
+                "proxyResolution",
+                settings.proxy.resolution.name
+            )
+
+            put(
+                "proxyJpegQuality",
+                settings.proxy.jpegQuality
+            )
+        }
     }
 
-    private fun fromJson(json: JSONObject): ProjectSettings = ProjectSettings(
-        id = json.getString("id"),
-        projectName = json.optString("projectName", ""),
-        frameRate = json.optDouble("frameRate", 24.0),
-        sensorWidthMm = json.optDouble("sensorWidthMm", 36.0),
-        colorSpace = runCatching {
-            ColorSpace.valueOf(
-                json.optString("colorSpace", "SRGB")
-            )
-        }.getOrDefault(ColorSpace.SRGB),
-        proxy = ProxySettings(
-            enabled = json.optBoolean("proxyEnabled", true),
-            resolution = runCatching {
-                ProxyResolution.valueOf(
-                    json.optString("proxyResolution", "HALF")
-                )
-            }.getOrDefault(ProxyResolution.HALF),
-            jpegQuality = json.optInt("proxyJpegQuality", 85)
-        )
-    )
-}
+    private fun fromJson(
+        json: JSONObject
+    ): ProjectSettings {
 
+        return ProjectSettings(
+
+            id =
+                json.getString(
+                    "id"
+                ),
+
+            projectName =
+                json.optString(
+                    "projectName",
+                    ""
+                ),
+
+            sourceFolderUri =
+                json.optString(
+                    "sourceFolderUri",
+                    ""
+                ),
+
+            frameRate =
+                json.optDouble(
+                    "frameRate",
+                    24.0
+                ),
+
+            sensorWidthMm =
+                json.optDouble(
+                    "sensorWidthMm",
+                    36.0
+                ),
+
+            colorSpace =
+                runCatching {
+
+                    ColorSpace.valueOf(
+                        json.optString(
+                            "colorSpace",
+                            "SRGB"
+                        )
+                    )
+
+                }.getOrDefault(
+                    ColorSpace.SRGB
+                ),
+
+            proxy =
+                ProxySettings(
+
+                    enabled =
+                        json.optBoolean(
+                            "proxyEnabled",
+                            true
+                        ),
+
+                    resolution =
+                        runCatching {
+
+                            ProxyResolution.valueOf(
+                                json.optString(
+                                    "proxyResolution",
+                                    "HALF"
+                                )
+                            )
+
+                        }.getOrDefault(
+                            ProxyResolution.HALF
+                        ),
+
+                    jpegQuality =
+                        json.optInt(
+                            "proxyJpegQuality",
+                            85
+                        )
+                ),
+
+            footage =
+                createStoredFootageInfo(
+                    json
+                )
+        )
+    }
+
+    /**
+     * The complete frame list is intentionally not stored in JSON.
+     *
+     * It can contain thousands of SAF Uris.
+     *
+     * The source folder is rescanned when the project is reopened.
+     */
+    private fun createStoredFootageInfo(
+        json: JSONObject
+    ) =
+        com.trackstudio.app.data.model.FootageInfo(
+
+            frames = emptyList(),
+
+            detectedPattern =
+                json.optString(
+                    "footagePattern",
+                    ""
+                ),
+
+            width =
+                json.optInt(
+                    "footageWidth",
+                    0
+                ),
+
+            height =
+                json.optInt(
+                    "footageHeight",
+                    0
+                ),
+
+            frameCount =
+                json.optInt(
+                    "footageFrameCount",
+                    0
+                ),
+
+            totalSizeBytes =
+                json.optLong(
+                    "footageTotalSizeBytes",
+                    0L
+                ),
+
+            isResolutionConsistent =
+                json.optBoolean(
+                    "footageResolutionConsistent",
+                    true
+                )
+        )
+}

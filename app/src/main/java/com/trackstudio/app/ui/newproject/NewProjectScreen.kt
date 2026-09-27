@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.trackstudio.app.data.model.ProjectSettings
 import com.trackstudio.app.ui.common.DesktopButton
 import com.trackstudio.app.ui.newproject.components.FootagePanel
 import com.trackstudio.app.ui.newproject.components.ProjectSettingsPanel
@@ -60,19 +61,25 @@ private enum class SettingsTab(
 fun NewProjectScreen(
     viewModel: NewProjectViewModel,
     onCancel: () -> Unit,
-    onProjectCreated: () -> Unit
+    onProjectCreated: (ProjectSettings) -> Unit
 ) {
     val state by viewModel.uiState.collectAsState()
 
     var selectedTab by remember {
-        mutableStateOf(
-            SettingsTab.FOOTAGE
-        )
+        mutableStateOf(SettingsTab.FOOTAGE)
     }
 
+    /*
+     * Creation is complete.
+     *
+     * Pass the completed ProjectSettings back to MainActivity.
+     * MainActivity will then open the Viewer.
+     */
     if (state.creationPhase == CreationPhase.DONE) {
         LaunchedEffect(Unit) {
-            onProjectCreated()
+            viewModel.getCompletedProjectSettings()?.let { settings ->
+                onProjectCreated(settings)
+            }
         }
     }
 
@@ -203,7 +210,7 @@ private fun TitleBar() {
     ) {
 
         Text(
-            "NEW PROJECT",
+            text = "NEW PROJECT",
             style =
                 MaterialTheme.typography.titleMedium,
             color = TextPrimary
@@ -291,7 +298,7 @@ private fun TabRail(
             ) {
 
                 Text(
-                    tab.label,
+                    text = tab.label,
                     color =
                         if (isSelected) {
                             TextPrimary
@@ -334,7 +341,8 @@ private fun BottomBar(
                 state.creationProgress
 
             Text(
-                "Generating proxies: $done / $total",
+                text =
+                    "Generating proxies: $done / $total",
                 style =
                     MaterialTheme.typography.bodyMedium,
                 color = TextSecondary
@@ -346,7 +354,7 @@ private fun BottomBar(
                         0f
                     } else {
                         done.toFloat() /
-                                total.toFloat()
+                            total.toFloat()
                     }
                 },
                 modifier =
