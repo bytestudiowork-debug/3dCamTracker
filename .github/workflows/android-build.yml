@@ -1,5 +1,7 @@
 name: Android CI Build
 
+run-name: Fix remaining viewer compilation errors
+
 on:
   push:
     branches: ["main", "master"]
