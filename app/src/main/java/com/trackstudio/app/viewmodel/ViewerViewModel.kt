@@ -18,7 +18,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.withContext
-import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.max
 
 data class ViewerUiState(
@@ -33,25 +32,8 @@ class ViewerViewModel(
 ) : ViewModel() {
 
     companion object {
-
-        /*
-         * Viewer images are decoded only as large as necessary
-         * for normal viewing.
-         *
-         * The original footage remains untouched.
-         */
         private const val MAX_DECODE_DIMENSION = 1920
-
-        /*
-         * Keep native image decoding concurrency low.
-         * This avoids creating many large temporary bitmaps.
-         */
         private const val MAX_CONCURRENT_DECODES = 2
-
-        /*
-         * Frames immediately around the current frame are
-         * prepared in advance.
-         */
         private const val PREFETCH_DISTANCE = 2
     }
 
@@ -66,33 +48,27 @@ class ViewerViewModel(
     private val decodeSemaphore =
         Semaphore(MAX_CONCURRENT_DECODES)
 
-    /*
-     * Memory-bounded bitmap cache.
-     */
     private val bitmapCache =
         object : LruCache<Int, Bitmap>(cacheSizeKb()) {
-
             override fun sizeOf(
                 key: Int,
                 value: Bitmap
             ): Int {
-                return max(
-                    1,
-                    value.byteCount / 1024
-                )
+                return max(1, value.byteCount / 1024)
             }
         }
 
     /*
-     * Every new frame request increments this number.
+     * Frame decoding must not be cancelled every time playback
+     * advances. On a real image sequence, decoding a frame can take
+     * longer than one playback interval, especially when the source
+     * is accessed through a SAF ContentResolver.
      *
-     * An old asynchronous decode result cannot replace
-     * a newer requested frame.
+     * We therefore keep a small set of decode jobs alive and only
+     * display a decoded frame if it is still the requested frame.
      */
-    private val loadGeneration =
-        AtomicLong(0L)
-
-    private var currentLoadJob: Job? = null
+    private val decodeJobs =
+        mutableMapOf<Int, Job>()
 
     private val playbackController =
         PlaybackController(
@@ -117,9 +93,7 @@ class ViewerViewModel(
         uris: List<Uri>,
         fps: Double
     ) {
-        currentLoadJob?.cancel()
-
-        loadGeneration.incrementAndGet()
+        cancelAllDecodeJobs()
 
         frameUris = uris.toList()
 
@@ -132,7 +106,6 @@ class ViewerViewModel(
         )
 
         if (frameUris.isEmpty()) {
-
             _uiState.value =
                 ViewerUiState(
                     playback =
@@ -140,7 +113,6 @@ class ViewerViewModel(
                             fps = fps
                         )
                 )
-
             return
         }
 
@@ -148,10 +120,7 @@ class ViewerViewModel(
     }
 
     fun playPause() {
-
-        if (
-            _uiState.value.playback.isPlaying
-        ) {
+        if (_uiState.value.playback.isPlaying) {
             playbackController.pause()
         } else {
             playbackController.play()
@@ -179,7 +148,6 @@ class ViewerViewModel(
     }
 
     fun clearError() {
-
         _uiState.value =
             _uiState.value.copy(
                 errorMessage = null
@@ -189,132 +157,128 @@ class ViewerViewModel(
     private fun loadFrame(
         frameIndex: Int
     ) {
-        if (
-            frameIndex !in frameUris.indices
-        ) {
+        if (frameIndex !in frameUris.indices) {
             return
         }
 
-        val generation =
-            loadGeneration.incrementAndGet()
-
-        val cached =
-            bitmapCache.get(frameIndex)
-
-        if (cached != null) {
-
-            _uiState.value =
-                _uiState.value.copy(
-                    playback =
-                        _uiState.value.playback.copy(
-                            currentFrame = frameIndex
-                        ),
-                    currentBitmap = cached,
-                    isLoadingFrame = false,
-                    errorMessage = null
-                )
-
-            prefetchNearbyFrames(
-                frameIndex = frameIndex,
-                generation = generation
-            )
-
-            return
-        }
-
+        /*
+         * Always update the timeline immediately. The bitmap may
+         * arrive a little later if this frame is not cached yet.
+         */
         _uiState.value =
             _uiState.value.copy(
                 playback =
                     _uiState.value.playback.copy(
                         currentFrame = frameIndex
                     ),
-                isLoadingFrame = true,
+                isLoadingFrame =
+                    bitmapCache.get(frameIndex) == null,
                 errorMessage = null
             )
 
-        currentLoadJob?.cancel()
+        bitmapCache.get(frameIndex)?.let { cached ->
+            _uiState.value =
+                _uiState.value.copy(
+                    currentBitmap = cached,
+                    isLoadingFrame = false
+                )
 
-        currentLoadJob =
+            prefetchNearbyFrames(frameIndex)
+            return
+        }
+
+        /*
+         * Do not start duplicate decodes for the same frame.
+         */
+        if (decodeJobs[frameIndex]?.isActive == true) {
+            prefetchNearbyFrames(frameIndex)
+            return
+        }
+
+        val job =
             viewModelScope.launch(Dispatchers.IO) {
-
                 val result =
                     runCatching {
                         decodeFrame(frameIndex)
                     }
 
                 withContext(Dispatchers.Main) {
-
-                    /*
-                     * This decode belongs to an older request.
-                     */
-                    if (
-                        generation !=
-                        loadGeneration.get()
-                    ) {
-                        result.getOrNull()?.let {
-                            recycleIfNeeded(it)
-                        }
-
-                        return@withContext
-                    }
+                    decodeJobs.remove(frameIndex)
 
                     result
                         .onSuccess { bitmap ->
+                            /*
+                             * Cache the completed frame even if playback
+                             * has already moved on. This is what allows
+                             * subsequent playback frames to become smooth.
+                             */
+                            val existing =
+                                bitmapCache.get(frameIndex)
 
-                            bitmapCache.put(
-                                frameIndex,
-                                bitmap
-                            )
-
-                            _uiState.value =
-                                _uiState.value.copy(
-                                    currentBitmap = bitmap,
-                                    isLoadingFrame = false,
-                                    errorMessage = null
+                            if (existing == null) {
+                                bitmapCache.put(
+                                    frameIndex,
+                                    bitmap
                                 )
+                            } else {
+                                recycleIfNeeded(bitmap)
+                            }
 
-                            prefetchNearbyFrames(
-                                frameIndex = frameIndex,
-                                generation = generation
-                            )
+                            /*
+                             * Never let an older asynchronous decode
+                             * replace the frame currently requested by
+                             * the user/playback controller.
+                             */
+                            if (
+                                _uiState.value.playback.currentFrame ==
+                                frameIndex
+                            ) {
+                                _uiState.value =
+                                    _uiState.value.copy(
+                                        currentBitmap =
+                                            bitmapCache.get(frameIndex),
+                                        isLoadingFrame = false,
+                                        errorMessage = null
+                                    )
+
+                                prefetchNearbyFrames(frameIndex)
+                            }
                         }
                         .onFailure { error ->
-
-                            _uiState.value =
-                                _uiState.value.copy(
-                                    isLoadingFrame = false,
-                                    errorMessage =
-                                        error.message
-                                            ?: "Unable to load frame."
-                                )
+                            if (
+                                _uiState.value.playback.currentFrame ==
+                                frameIndex
+                            ) {
+                                _uiState.value =
+                                    _uiState.value.copy(
+                                        isLoadingFrame = false,
+                                        errorMessage =
+                                            error.message
+                                                ?: "Unable to load frame."
+                                    )
+                            }
                         }
                 }
             }
+
+        decodeJobs[frameIndex] = job
+
+        prefetchNearbyFrames(frameIndex)
     }
 
     private suspend fun decodeFrame(
         frameIndex: Int
     ): Bitmap {
-
         decodeSemaphore.acquire()
 
         try {
+            val uri = frameUris[frameIndex]
+            val resolver = appContext.contentResolver
 
-            val uri =
-                frameUris[frameIndex]
-
-            val resolver =
-                appContext.contentResolver
-
-            /*
-             * Pass 1:
-             * read only image dimensions.
-             */
             val bounds =
                 resolver
                     .openInputStream(uri)
                     .use { input ->
-
                         requireNotNull(input) {
                             "Unable to open image."
                         }
@@ -344,30 +308,21 @@ class ViewerViewModel(
                 calculateSampleSize(
                     width = bounds.outWidth,
                     height = bounds.outHeight,
-                    maxDimension =
-                        MAX_DECODE_DIMENSION
+                    maxDimension = MAX_DECODE_DIMENSION
                 )
 
-            /*
-             * Pass 2:
-             * decode only the required resolution.
-             */
             return resolver
                 .openInputStream(uri)
                 .use { input ->
-
                     requireNotNull(input) {
                         "Unable to open image."
                     }
 
                     val options =
                         BitmapFactory.Options().apply {
-                            inSampleSize =
-                                sampleSize
-
+                            inSampleSize = sampleSize
                             inPreferredConfig =
                                 Bitmap.Config.ARGB_8888
-
                             inMutable = false
                         }
 
@@ -375,11 +330,8 @@ class ViewerViewModel(
                         input,
                         null,
                         options
-                    ) ?: error(
-                        "Unable to decode image."
-                    )
+                    ) ?: error("Unable to decode image.")
                 }
-
         } finally {
             decodeSemaphore.release()
         }
@@ -390,14 +342,11 @@ class ViewerViewModel(
         height: Int,
         maxDimension: Int
     ): Int {
-
         var sampleSize = 1
 
         while (
-            width / sampleSize >
-            maxDimension ||
-            height / sampleSize >
-            maxDimension
+            width / sampleSize > maxDimension ||
+            height / sampleSize > maxDimension
         ) {
             sampleSize *= 2
         }
@@ -406,116 +355,91 @@ class ViewerViewModel(
     }
 
     private fun prefetchNearbyFrames(
-        frameIndex: Int,
-        generation: Long
+        frameIndex: Int
     ) {
-        if (
-            generation !=
-            loadGeneration.get()
-        ) {
-            return
-        }
-
-        /*
-         * Forward frames.
-         */
-        for (
-            offset in 1..PREFETCH_DISTANCE
-        ) {
-
-            val index =
-                frameIndex + offset
-
-            if (
-                index !in frameUris.indices
-            ) {
-                break
+        for (offset in 1..PREFETCH_DISTANCE) {
+            val forwardIndex = frameIndex + offset
+            if (forwardIndex in frameUris.indices) {
+                requestPrefetch(forwardIndex)
             }
 
-            if (
-                bitmapCache.get(index) == null
-            ) {
-                launchPrefetch(index)
-            }
-        }
-
-        /*
-         * Backward frames.
-         */
-        for (
-            offset in 1..PREFETCH_DISTANCE
-        ) {
-
-            val index =
-                frameIndex - offset
-
-            if (
-                index !in frameUris.indices
-            ) {
-                break
-            }
-
-            if (
-                bitmapCache.get(index) == null
-            ) {
-                launchPrefetch(index)
+            val backwardIndex = frameIndex - offset
+            if (backwardIndex in frameUris.indices) {
+                requestPrefetch(backwardIndex)
             }
         }
     }
 
-    private fun launchPrefetch(
+    private fun requestPrefetch(
         frameIndex: Int
     ) {
-        viewModelScope.launch(Dispatchers.IO) {
+        if (
+            bitmapCache.get(frameIndex) != null ||
+            decodeJobs[frameIndex]?.isActive == true
+        ) {
+            return
+        }
 
-            if (
-                bitmapCache.get(frameIndex) != null
-            ) {
-                return@launch
-            }
+        val job =
+            viewModelScope.launch(Dispatchers.IO) {
+                val result =
+                    runCatching {
+                        decodeFrame(frameIndex)
+                    }
 
-            runCatching {
-                decodeFrame(frameIndex)
-            }.onSuccess { bitmap ->
+                withContext(Dispatchers.Main) {
+                    decodeJobs.remove(frameIndex)
 
-                if (
-                    bitmapCache.get(frameIndex) == null
-                ) {
-                    bitmapCache.put(
-                        frameIndex,
-                        bitmap
-                    )
-                } else {
-                    recycleIfNeeded(bitmap)
+                    result.onSuccess { bitmap ->
+                        val existing =
+                            bitmapCache.get(frameIndex)
+
+                        if (existing == null) {
+                            bitmapCache.put(
+                                frameIndex,
+                                bitmap
+                            )
+                        } else {
+                            recycleIfNeeded(bitmap)
+                        }
+
+                        if (
+                            _uiState.value.playback.currentFrame ==
+                            frameIndex
+                        ) {
+                            _uiState.value =
+                                _uiState.value.copy(
+                                    currentBitmap =
+                                        bitmapCache.get(frameIndex),
+                                    isLoadingFrame = false,
+                                    errorMessage = null
+                                )
+                        }
+                    }
                 }
             }
-        }
+
+        decodeJobs[frameIndex] = job
+    }
+
+    private fun cancelAllDecodeJobs() {
+        decodeJobs.values.forEach { it.cancel() }
+        decodeJobs.clear()
     }
 
     private fun recycleIfNeeded(
         bitmap: Bitmap
     ) {
-        /*
-         * LruCache owns cached bitmaps.
-         *
-         * A bitmap that wasn't inserted can be safely
-         * recycled when it is no longer needed.
-         */
         if (!bitmap.isRecycled) {
             bitmap.recycle()
         }
     }
 
     private fun cacheSizeKb(): Int {
-
         val memoryClassMb =
-            Runtime.getRuntime()
-                .maxMemory() /
+            Runtime.getRuntime().maxMemory() /
                 (1024L * 1024L)
 
-        /*
-         * Conservative cache sizes for Android devices.
-         */
         val targetMb =
             when {
                 memoryClassMb <= 128 -> 16
@@ -534,27 +458,20 @@ class ViewerViewModel(
     }
 
     override fun onCleared() {
-
-        currentLoadJob?.cancel()
-
+        cancelAllDecodeJobs()
         playbackController.release()
-
         bitmapCache.evictAll()
-
         super.onCleared()
     }
 
     class Factory(
         private val appContext: Context
     ) : ViewModelProvider.Factory {
-
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(
             modelClass: Class<T>
         ): T {
-            return ViewerViewModel(
-                appContext
-            ) as T
+            return ViewerViewModel(appContext) as T
         }
     }
 }
