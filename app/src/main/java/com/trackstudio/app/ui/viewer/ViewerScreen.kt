@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CropFree
+import androidx.compose.material.icons.outlined.FullscreenExit
 import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -158,8 +159,10 @@ fun ViewerScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .padding(gap),
-                    verticalArrangement = Arrangement.spacedBy(gap)
+                        .padding(if (fullscreen) 0.dp else gap),
+                    verticalArrangement =
+                        if (fullscreen) Arrangement.Top
+                        else Arrangement.spacedBy(gap)
                 ) {
 
                     ViewerPanel(
@@ -170,22 +173,27 @@ fun ViewerScreen(
                         onZoomChanged = { zoom = it },
                         onFit = { zoom = 1f },
                         compact = compactHeight,
+                        fullscreen = fullscreen,
+                        onToggleFullscreen = { fullscreen = !fullscreen },
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
                     )
 
-                    PlaybackPanel(
-                        state = state,
-                        compact = compactHeight,
-                        isFullscreen = fullscreen,
-                        onToggleFullscreen = { fullscreen = !fullscreen },
-                        onPlayPause = viewModel::playPause,
-                        onPreviousFrame = viewModel::previousFrame,
-                        onNextFrame = viewModel::nextFrame,
-                        onSeek = viewModel::seekTo,
-                        onThumbnailsNeeded = viewModel::ensureThumbnails
-                    )
+                    if (!fullscreen) {
+                        PlaybackPanel(
+                            state = state,
+                            compact = compactHeight,
+                            isFullscreen = false,
+                            onToggleFullscreen = { fullscreen = true },
+                            onPlayPause = viewModel::playPause,
+                            onFirstFrame = viewModel::firstFrame,
+                            onLastFrame = viewModel::lastFrame,
+                            onSeek = viewModel::seekTo,
+                            onSpeedChanged = viewModel::setPlaybackSpeed,
+                            onThumbnailsNeeded = viewModel::ensureThumbnails
+                        )
+                    }
                 }
 
                 if (inlinePanel && !fullscreen) {
@@ -236,14 +244,22 @@ private fun ViewerPanel(
     onZoomChanged: (Float) -> Unit,
     onFit: () -> Unit,
     compact: Boolean,
+    fullscreen: Boolean,
+    onToggleFullscreen: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val shape = RoundedCornerShape(12.dp)
+    val shape = if (fullscreen) RoundedCornerShape(0.dp) else RoundedCornerShape(12.dp)
 
     Box(
         modifier = modifier
             .clip(shape)
-            .border(BorderStroke(1.dp, PanelBorder), shape)
+            .border(
+                BorderStroke(
+                    if (fullscreen) 0.dp else 1.dp,
+                    PanelBorder
+                ),
+                shape
+            )
     ) {
 
         ViewerCanvas(
@@ -299,6 +315,30 @@ private fun ViewerPanel(
                 fontSize = if (compact) 12.sp else 13.sp,
                 modifier = Modifier.padding(start = 6.dp)
             )
+        }
+
+        if (fullscreen) {
+            OverlayChip(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(if (compact) 8.dp else 12.dp),
+                compact = compact,
+                onClick = onToggleFullscreen
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.FullscreenExit,
+                    contentDescription = "Exit fullscreen",
+                    tint = TextPrimary,
+                    modifier = Modifier.size(if (compact) 18.dp else 20.dp)
+                )
+
+                Text(
+                    text = "Exit",
+                    color = TextPrimary,
+                    fontSize = if (compact) 12.sp else 13.sp,
+                    modifier = Modifier.padding(start = 6.dp)
+                )
+            }
         }
 
         // Axis legend.
