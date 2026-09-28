@@ -90,13 +90,13 @@ fun PlaybackPanel(
                         onNext = onNextFrame
                     )
                     Text(
-                        "Frame \${playback.frameNumber} / \${playback.frameCount}",
+                        "Frame ${playback.frameNumber} / ${playback.frameCount}",
                         color = TextPrimary,
                         fontSize = if (compact) 12.sp else 13.sp,
                         modifier = Modifier.padding(start = 8.dp)
                     )
                     Text(
-                        "\${formatTimecode(playback.currentFrame, playback.fps)} / " +
+                        "${formatTimecode(playback.currentFrame, playback.fps)} / " +
                             formatTimecode(maxOf(0, playback.frameCount - 1), playback.fps),
                         color = TextSecondary,
                         fontSize = if (compact) 11.sp else 12.sp,
@@ -178,7 +178,7 @@ private fun Timeline(
     Column {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("START  F1", color = TextSecondary, fontSize = 10.sp)
-            Text("END  F\${frameCount}", color = TextSecondary, fontSize = 10.sp)
+            Text("END  F${frameCount}", color = TextSecondary, fontSize = 10.sp)
         }
 
         Box(
@@ -236,12 +236,12 @@ private fun Timeline(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text("F1", color = TextSecondary, fontSize = 10.sp)
-            Text("F\${currentFrame + 1}", color = TextPrimary, fontSize = 11.sp)
-            Text("F\${frameCount}", color = TextSecondary, fontSize = 10.sp)
+            Text("F${currentFrame + 1}", color = TextPrimary, fontSize = 11.sp)
+            Text("F${frameCount}", color = TextSecondary, fontSize = 10.sp)
         }
 
         Text(
-            text = if (fps == fps.toInt().toDouble()) "\${fps.toInt()} FPS timeline" else "\${fps} FPS timeline",
+            text = if (fps == fps.toInt().toDouble()) "${fps.toInt()} FPS timeline" else "${fps} FPS timeline",
             color = TextSecondary,
             fontSize = 9.sp,
             modifier = Modifier.padding(top = 2.dp)
