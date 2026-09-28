@@ -178,6 +178,7 @@ private fun Timeline(
         }.distinct()
     }
     val progress = if (frameCount > 1) currentFrame.toFloat() / (frameCount - 1) else 0f
+    val timelineWidthPx = remember { mutableIntStateOf(1) }
 
     Column {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -185,19 +186,17 @@ private fun Timeline(
             Text("END  F${frameCount}", color = TextSecondary, fontSize = 10.sp)
         }
 
-        var timelineWidthPx by remember { mutableIntStateOf(1) }
-
-    Box(
+        Box(
         Modifier.fillMaxWidth()
             .padding(top = 4.dp)
             .height(if (frameCount > 1) 64.dp else 54.dp)
             .clip(RoundedCornerShape(7.dp))
             .background(ViewerBackground)
             .border(BorderStroke(1.dp, PanelBorder), RoundedCornerShape(7.dp))
-            .onSizeChanged { timelineWidthPx = it.width.coerceAtLeast(1) }
-            .pointerInput(frameCount, timelineWidthPx) {
+            .onSizeChanged { timelineWidthPx.intValue = it.width.coerceAtLeast(1) }
+            .pointerInput(frameCount, timelineWidthPx.intValue) {
                 detectTapGestures { position ->
-                    val fraction = (position.x / timelineWidthPx.toFloat()).coerceIn(0f, 1f)
+                    val fraction = (position.x / timelineWidthPx.intValue.toFloat()).coerceIn(0f, 1f)
                     onSeek(
                         (fraction * (frameCount - 1))
                             .roundToInt()
@@ -236,7 +235,7 @@ private fun Timeline(
                 Modifier
                     .fillMaxHeight()
                     .width(2.dp)
-                    .offset(x = with(androidx.compose.ui.platform.LocalDensity.current) { timelineWidthPx.toDp() } * progress - 1.dp)
+                    .offset(x = with(androidx.compose.ui.platform.LocalDensity.current) { timelineWidthPx.intValue.toDp() } * progress - 1.dp)
                     .background(AccentPrimary)
             )
         }
