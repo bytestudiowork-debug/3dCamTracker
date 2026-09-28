@@ -392,6 +392,9 @@ private fun TrackStudioApp() {
                         fps =
                             project.frameRate,
 
+                        projectName =
+                            project.projectName,
+
                         onBack = {
 
                             viewerViewModel
