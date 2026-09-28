@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,9 +35,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.layout.ContentScale
 import com.trackstudio.app.ui.theme.AccentPrimary
@@ -181,7 +182,7 @@ private fun Timeline(
             Text("END  F${frameCount}", color = TextSecondary, fontSize = 10.sp)
         }
 
-        Box(
+        BoxWithConstraints(
             Modifier.fillMaxWidth()
                 .padding(top = 4.dp)
                 .height(if (frameCount > 1) 64.dp else 54.dp)
@@ -223,12 +224,12 @@ private fun Timeline(
             }
 
             Box(
-                Modifier.fillMaxSize().graphicsLayer {
-                    translationX = progress * size.width - 1.dp.toPx()
-                }
-            ) {
-                Box(Modifier.fillMaxHeight().width(2.dp).background(AccentPrimary))
-            }
+                Modifier
+                    .fillMaxHeight()
+                    .width(2.dp)
+                    .offset(x = maxWidth * progress - 1.dp)
+                    .background(AccentPrimary)
+            )
         }
 
         Row(

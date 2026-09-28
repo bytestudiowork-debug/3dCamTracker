@@ -1,6 +1,7 @@
 package com.trackstudio.app.ui.viewer
 
 import android.graphics.Bitmap
+import android.view.MotionEvent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -21,10 +22,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.awaitPointerEventScope
-import androidx.compose.ui.input.pointer.consume
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
@@ -201,15 +200,14 @@ fun ViewerCanvas(
                     )
                 }
             }
-            .pointerInput(bitmap, containerSize) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        if (bitmap == null || event.type != PointerEventType.Scroll) continue
-                        val change = event.changes.firstOrNull() ?: continue
-                        val scrollY = change.scrollDelta.y
-                        if (scrollY == 0f) continue
-
+            .pointerInteropFilter { event ->
+                if (bitmap == null || event.actionMasked != MotionEvent.ACTION_SCROLL) {
+                    false
+                } else {
+                    val scrollY = event.getAxisValue(MotionEvent.AXIS_VSCROLL)
+                    if (scrollY == 0f) {
+                        false
+                    } else {
                         val oldZoom = transform.zoom
                         val factor = kotlin.math.exp((-scrollY * 0.12f).toDouble()).toFloat()
                         val newZoom = (oldZoom * factor).coerceIn(
@@ -221,19 +219,18 @@ fun ViewerCanvas(
                             val cx = containerSize.width / 2f
                             val cy = containerSize.height / 2f
                             val ratio = newZoom / oldZoom
-                            val cursor = change.position
                             transform = clampTransform(
                                 ViewerTransform(
                                     newZoom,
-                                    cursor.x - cx - (cursor.x - cx - transform.panX) * ratio,
-                                    cursor.y - cy - (cursor.y - cy - transform.panY) * ratio
+                                    event.x - cx - (event.x - cx - transform.panX) * ratio,
+                                    event.y - cy - (event.y - cy - transform.panY) * ratio
                                 ),
                                 bitmap,
                                 containerSize
                             )
                             onZoomChanged?.invoke(transform.zoom)
                         }
-                        change.consume()
+                        true
                     }
                 }
             }
