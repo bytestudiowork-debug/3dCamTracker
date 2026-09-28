@@ -36,8 +36,7 @@ data class ViewerUiState(
     val isLoadingFrame: Boolean = false,
     val errorMessage: String? = null,
     /** Small preview images keyed by frame index (used by the filmstrip). */
-    val thumbnails: Map<Int, Bitmap> = emptyMap(),
-    val playbackSpeed: Float = 1f
+    val thumbnails: Map<Int, Bitmap> = emptyMap()
 )
 
 class ViewerViewModel(
@@ -151,14 +150,12 @@ class ViewerViewModel(
         wantedCenter = 0
 
         val safeFps = fps.coerceIn(1.0, 240.0)
-        val speed = _uiState.value.playbackSpeed
 
         playbackController.configure(
             frameCount = frameUris.size,
             fps = safeFps,
             currentFrame = 0
         )
-        playbackController.speed = speed.toDouble()
 
         _uiState.value =
             ViewerUiState(
@@ -167,8 +164,7 @@ class ViewerViewModel(
                     frameCount = frameUris.size,
                     fps = safeFps,
                     isPlaying = false
-                ),
-                playbackSpeed = speed
+                )
             )
 
         if (frameUris.isNotEmpty()) {
@@ -196,10 +192,6 @@ class ViewerViewModel(
 
     fun seekTo(frame: Int) = playbackController.seekTo(frame)
 
-    fun setPlaybackSpeed(speed: Float) {
-        playbackController.speed = speed.toDouble()
-        _uiState.update { it.copy(playbackSpeed = speed) }
-    }
 
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null) }

@@ -55,12 +55,6 @@ class PlaybackController(
     private var fps = 24.0
     private var currentFrame = 0
 
-    /** 1.0 = normal speed. */
-    var speed: Double = 1.0
-        set(value) {
-            field = value.coerceIn(0.05, 8.0)
-        }
-
     val isPlaying: Boolean
         get() = playbackJob?.isActive == true
 
@@ -182,7 +176,7 @@ class PlaybackController(
     }
 
     private fun frameIntervalNanos(): Long =
-        (1_000_000_000.0 / (fps * speed))
+        (1_000_000_000.0 / (fps))
             .toLong()
             .coerceAtLeast(1L)
 }

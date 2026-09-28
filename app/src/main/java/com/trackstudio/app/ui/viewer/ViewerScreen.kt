@@ -6,7 +6,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -22,11 +21,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CropFree
-import androidx.compose.material.icons.outlined.Fullscreen
-import androidx.compose.material.icons.outlined.FullscreenExit
-import androidx.compose.material.icons.outlined.GpsFixed
-import androidx.compose.material.icons.outlined.NearMe
-import androidx.compose.material.icons.outlined.PanTool
 import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -37,7 +31,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -45,10 +38,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -58,7 +49,6 @@ import com.trackstudio.app.ui.theme.AccentPrimary
 import com.trackstudio.app.ui.theme.AccentSuccess
 import com.trackstudio.app.ui.theme.PanelBackground
 import com.trackstudio.app.ui.theme.PanelBorder
-import com.trackstudio.app.ui.theme.SelectedItemBackground
 import com.trackstudio.app.ui.theme.TextPrimary
 import com.trackstudio.app.ui.theme.TextSecondary
 import com.trackstudio.app.ui.theme.ViewerBackground
@@ -179,8 +169,6 @@ fun ViewerScreen(
                         onZoomChanged = { zoom = it },
                         onFit = { zoom = 1f },
                         compact = compactHeight,
-                        isFullscreen = fullscreen,
-                        onToggleFullscreen = { fullscreen = !fullscreen },
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
@@ -195,7 +183,6 @@ fun ViewerScreen(
                         onPreviousFrame = viewModel::previousFrame,
                         onNextFrame = viewModel::nextFrame,
                         onSeek = viewModel::seekTo,
-                        onSpeedSelected = viewModel::setPlaybackSpeed,
                         onThumbnailsNeeded = viewModel::ensureThumbnails
                     )
                 }
@@ -248,8 +235,6 @@ private fun ViewerPanel(
     onZoomChanged: (Float) -> Unit,
     onFit: () -> Unit,
     compact: Boolean,
-    isFullscreen: Boolean,
-    onToggleFullscreen: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val shape = RoundedCornerShape(12.dp)
@@ -395,62 +380,4 @@ private fun AxisLabel(
         color = color,
         fontSize = if (compact) 11.sp else 12.sp
     )
-}
-
-private data class ToolDef(
-    val icon: ImageVector,
-    val description: String
-)
-
-private val tools = listOf(
-    ToolDef(Icons.Outlined.NearMe, "Select"),
-    ToolDef(Icons.Outlined.PanTool, "Pan"),
-    ToolDef(Icons.Outlined.GpsFixed, "Track point"),
-    ToolDef(Icons.Outlined.CropFree, "Region")
-)
-
-@Composable
-private fun ToolStrip(
-    activeTool: Int,
-    onToolSelected: (Int) -> Unit,
-    isFullscreen: Boolean,
-    onToggleFullscreen: () -> Unit,
-    compact: Boolean,
-    modifier: Modifier = Modifier
-) {
-    val shape = RoundedCornerShape(12.dp)
-    val buttonSize = if (compact) 34.dp else 40.dp
-
-    Column(
-        modifier = modifier
-            .clip(shape)
-            .background(Color(0xCC0B1220))
-            .border(BorderStroke(1.dp, PanelBorder), shape)
-            .padding(4.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        tools.forEachIndexed { index, tool ->
-            ChromeIconButton(
-                icon = tool.icon,
-                contentDescription = tool.description,
-                onClick = { onToolSelected(index) },
-                tint = if (index == activeTool) TextPrimary else TextSecondary,
-                background =
-                    if (index == activeTool) SelectedItemBackground
-                    else Color.Transparent,
-                buttonSize = buttonSize,
-                iconSize = if (compact) 18.dp else 20.dp
-            )
-        }
-
-        ChromeIconButton(
-            icon =
-                if (isFullscreen) Icons.Outlined.FullscreenExit
-                else Icons.Outlined.Fullscreen,
-            contentDescription = "Toggle fullscreen viewer",
-            onClick = onToggleFullscreen,
-            buttonSize = buttonSize,
-            iconSize = if (compact) 18.dp else 20.dp
-        )
-    }
 }
