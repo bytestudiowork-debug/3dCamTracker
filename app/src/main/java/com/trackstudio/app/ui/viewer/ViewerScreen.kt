@@ -149,7 +149,7 @@ private fun EditorTopBar(
             .fillMaxWidth()
             .height(52.dp)
             .background(BgPanel)
-            .border(bottom = 1.dp, color = DividerCol),
+            .border(1.dp, DividerCol),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Spacer(Modifier.width(14.dp))
