@@ -11,6 +11,10 @@ object Logger {
         if (BuildConfig.DEBUG) Log.d(TAG, msg)
     }
 
+    fun w(msg: String) {
+        Log.w(TAG, msg)
+    }
+
     fun e(msg: String, throwable: Throwable? = null) {
         Log.e(TAG, msg, throwable)
     }
