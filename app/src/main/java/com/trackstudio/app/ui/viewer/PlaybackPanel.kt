@@ -134,9 +134,11 @@ fun PlaybackPanel(
 
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
 
-                // Room for the film icon plus ~100dp per thumbnail.
+                // Capture the BoxWithConstraints width explicitly so nested
+                // RowScope/ColumnScope receivers cannot shadow maxWidth.
+                val availableWidth = maxWidth
                 val thumbnailCount =
-                    ((maxWidth - 24.dp - 52.dp) / 100.dp)
+                    ((availableWidth - 24.dp - 52.dp) / 100.dp)
                         .toInt()
                         .coerceIn(3, 12)
 

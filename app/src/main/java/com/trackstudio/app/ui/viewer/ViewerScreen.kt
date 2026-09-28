@@ -140,7 +140,7 @@ fun ViewerScreen(
                 WorkspaceTopBar(
                     projectName = projectName,
                     compact = compactHeight,
-                    showTitle = maxWidth >= 720.dp,
+                    showTitle = windowWidth >= 720.dp,
                     showPanelToggle = !inlinePanel,
                     onTogglePanel = { panelOpen = !panelOpen },
                     onCloseProject = onBack

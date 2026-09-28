@@ -237,7 +237,7 @@ private val editItems = listOf(
 )
 
 private val viewItems = listOf(
-    NavItem("2D / 3D", Icons.Outlined.ThreeDRotation),
+    NavItem("2D / 3D", Icons.Outlined.ViewInAr),
     NavItem("Grid", Icons.Outlined.GridOn),
     NavItem("Axes", Icons.Outlined.OpenWith)
 )
