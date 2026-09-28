@@ -24,12 +24,12 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.pointerInteropFilter
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import com.trackstudio.app.ui.theme.PanelSurface
 import com.trackstudio.app.ui.theme.TextSecondary
+import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
 
@@ -44,7 +44,6 @@ data class ViewerTransform(
     }
 }
 
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun ViewerCanvas(
     bitmap: Bitmap?,
@@ -56,44 +55,19 @@ fun ViewerCanvas(
     backgroundColor: Color = PanelSurface,
     showZoomLabel: Boolean = true
 ) {
-    var containerSize by remember {
-        mutableStateOf(IntSize.Zero)
-    }
+    var containerSize by remember { mutableStateOf(IntSize.Zero) }
+    var transform by remember { mutableStateOf(ViewerTransform()) }
 
-    var transform by remember {
-        mutableStateOf(ViewerTransform())
-    }
-
-    /*
-     * External zoom buttons.
-     */
-    LaunchedEffect(requestedZoom) {
-
-        if (
-            requestedZoom != null &&
-            bitmap != null
-        ) {
-            transform =
-                clampTransform(
-                    ViewerTransform(
-                        zoom = requestedZoom,
-                        panX = transform.panX,
-                        panY = transform.panY
-                    ),
-                    bitmap,
-                    containerSize
-                )
+    LaunchedEffect(requestedZoom, bitmap) {
+        if (bitmap != null && requestedZoom != null) {
+            transform = clampTransform(
+                transform.copy(zoom = requestedZoom),
+                bitmap,
+                containerSize
+            )
         }
-    }
-
-    /*
-     * Reset when there is no image.
-     */
-    LaunchedEffect(bitmap) {
-
         if (bitmap == null) {
-            transform =
-                ViewerTransform()
+            transform = ViewerTransform()
         }
     }
 
@@ -101,107 +75,69 @@ fun ViewerCanvas(
         modifier = modifier
             .background(backgroundColor)
             .onSizeChanged { size ->
-
                 containerSize = size
-
-                transform =
-                    clampTransform(
-                        transform,
-                        bitmap,
-                        size
-                    )
+                transform = clampTransform(transform, bitmap, size)
             }
-            .pointerInput(
-                bitmap,
-                containerSize
-            ) {
+            /*
+             * One gesture detector handles both:
+             *  - one-finger / mouse drag -> pan
+             *  - pinch -> zoom
+             *  - two-finger movement -> pan + zoom
+             *
+             * The old transform math mixed the gesture centroid with the
+             * existing translation twice, which effectively cancelled pan.
+             */
+            .pointerInput(bitmap, containerSize) {
+                detectTransformGestures(
+                    panZoomLock = false
+                ) { centroid, pan, zoomChange, _ ->
+                    if (bitmap == null) return@detectTransformGestures
 
-                detectTransformGestures {
-                        centroid,
-                        pan,
-                        zoomChange,
-                        _ ->
-
-                    if (bitmap == null) {
-                        return@detectTransformGestures
+                    val oldZoom = transform.zoom
+                    val newZoom = (oldZoom * zoomChange).coerceIn(
+                        ViewerTransform.MIN_ZOOM,
+                        ViewerTransform.MAX_ZOOM
+                    )
+                    val zoomRatio = if (oldZoom > 0f) {
+                        newZoom / oldZoom
+                    } else {
+                        1f
                     }
 
-                    val oldZoom =
-                        transform.zoom
+                    val center = Offset(
+                        containerSize.width / 2f,
+                        containerSize.height / 2f
+                    )
 
-                    val newZoom =
-                        (
-                            oldZoom * zoomChange
-                        ).coerceIn(
-                            ViewerTransform.MIN_ZOOM,
-                            ViewerTransform.MAX_ZOOM
-                        )
-
-                    val zoomRatio =
-                        if (oldZoom > 0f) {
-                            newZoom / oldZoom
-                        } else {
-                            1f
-                        }
-
-                    val centerX =
-                        containerSize.width /
-                            2f
-
-                    val centerY =
-                        containerSize.height /
-                            2f
-
-                    /*
-                     * Zoom around the gesture centroid.
-                     */
+                    // Keep the image point under the fingers/mouse stable
+                    // while zooming, then apply the actual drag delta once.
                     val newPanX =
-                        centroid.x -
-                            (
-                                centroid.x -
-                                    centerX -
-                                    transform.panX
-                            ) * zoomRatio -
-                            (
-                                centroid.x -
-                                    centerX
-                            ) +
-                            transform.panX +
+                        centroid.x - center.x -
+                            (centroid.x - center.x - transform.panX) * zoomRatio +
                             pan.x
 
                     val newPanY =
-                        centroid.y -
-                            (
-                                centroid.y -
-                                    centerY -
-                                    transform.panY
-                            ) * zoomRatio -
-                            (
-                                centroid.y -
-                                    centerY
-                            ) +
-                            transform.panY +
+                        centroid.y - center.y -
+                            (centroid.y - center.y - transform.panY) * zoomRatio +
                             pan.y
 
-                    val updated =
+                    transform = clampTransform(
                         ViewerTransform(
                             zoom = newZoom,
                             panX = newPanX,
                             panY = newPanY
-                        )
-
-                    transform =
-                        clampTransform(
-                            updated,
-                            bitmap,
-                            containerSize
-                        )
-
-                    onZoomChanged?.invoke(
-                        transform.zoom
+                        ),
+                        bitmap,
+                        containerSize
                     )
+
+                    onZoomChanged?.invoke(transform.zoom)
                 }
             }
+            /*
+             * Mouse wheel zoom. Returning false for non-scroll events lets
+             * Compose's gesture detector receive normal mouse/touch drags.
+             */
             .pointerInteropFilter { event ->
                 if (bitmap == null || event.actionMasked != MotionEvent.ACTION_SCROLL) {
                     false
@@ -211,21 +147,26 @@ fun ViewerCanvas(
                         false
                     } else {
                         val oldZoom = transform.zoom
-                        val factor = kotlin.math.exp((-scrollY * 0.12f).toDouble()).toFloat()
+                        val factor = exp((-scrollY * 0.12f).toDouble()).toFloat()
                         val newZoom = (oldZoom * factor).coerceIn(
                             ViewerTransform.MIN_ZOOM,
                             ViewerTransform.MAX_ZOOM
                         )
 
                         if (newZoom != oldZoom) {
-                            val cx = containerSize.width / 2f
-                            val cy = containerSize.height / 2f
+                            val center = Offset(
+                                containerSize.width / 2f,
+                                containerSize.height / 2f
+                            )
                             val ratio = newZoom / oldZoom
+
                             transform = clampTransform(
                                 ViewerTransform(
-                                    newZoom,
-                                    event.x - cx - (event.x - cx - transform.panX) * ratio,
-                                    event.y - cy - (event.y - cy - transform.panY) * ratio
+                                    zoom = newZoom,
+                                    panX = event.x - center.x -
+                                        (event.x - center.x - transform.panX) * ratio,
+                                    panY = event.y - center.y -
+                                        (event.y - center.y - transform.panY) * ratio
                                 ),
                                 bitmap,
                                 containerSize
@@ -236,105 +177,50 @@ fun ViewerCanvas(
                     }
                 }
             }
-
-            .pointerInput(
-                bitmap,
-                containerSize,
-                transform
-            ) {
-
+            .pointerInput(bitmap, containerSize, transform) {
                 detectTapGestures(
-
                     onDoubleTap = { position ->
+                        if (bitmap == null) return@detectTapGestures
 
-                        if (bitmap == null) {
-                            return@detectTapGestures
+                        val nextZoom = when {
+                            transform.zoom < 1.5f -> 2f
+                            transform.zoom < 3f -> 4f
+                            else -> 1f
                         }
-
-                        val nextZoom =
-                            when {
-                                transform.zoom < 1.5f ->
-                                    2f
-
-                                transform.zoom < 3f ->
-                                    4f
-
-                                else ->
-                                    1f
-                            }
 
                         if (nextZoom == 1f) {
-
-                            transform =
-                                ViewerTransform()
-
+                            transform = ViewerTransform()
                         } else {
+                            val center = Offset(
+                                containerSize.width / 2f,
+                                containerSize.height / 2f
+                            )
+                            val ratio = nextZoom / transform.zoom
 
-                            val centerX =
-                                containerSize.width /
-                                    2f
-
-                            val centerY =
-                                containerSize.height /
-                                    2f
-
-                            val ratio =
-                                nextZoom /
-                                    transform.zoom
-
-                            val newPanX =
-                                position.x -
-                                    centerX -
-                                    (
-                                        position.x -
-                                            centerX -
-                                            transform.panX
-                                    ) * ratio
-
-                            val newPanY =
-                                position.y -
-                                    centerY -
-                                    (
-                                        position.y -
-                                            centerY -
-                                            transform.panY
-                                    ) * ratio
-
-                            transform =
-                                clampTransform(
-                                    ViewerTransform(
-                                        zoom = nextZoom,
-                                        panX = newPanX,
-                                        panY = newPanY
-                                    ),
-                                    bitmap,
-                                    containerSize
-                                )
+                            transform = clampTransform(
+                                ViewerTransform(
+                                    zoom = nextZoom,
+                                    panX = position.x - center.x -
+                                        (position.x - center.x - transform.panX) * ratio,
+                                    panY = position.y - center.y -
+                                        (position.y - center.y - transform.panY) * ratio
+                                ),
+                                bitmap,
+                                containerSize
+                            )
                         }
 
-                        onZoomChanged?.invoke(
-                            transform.zoom
-                        )
+                        onZoomChanged?.invoke(transform.zoom)
                     },
-
                     onTap = { position ->
-
-                        if (
-                            bitmap != null &&
-                            onImageCoordinateTap != null
-                        ) {
-
+                        if (bitmap != null && onImageCoordinateTap != null) {
                             screenToImageCoordinates(
                                 position,
                                 bitmap,
                                 containerSize,
                                 transform
                             )?.let { imagePosition ->
-
-                                onImageCoordinateTap(
-                                    imagePosition.x,
-                                    imagePosition.y
-                                )
+                                onImageCoordinateTap(imagePosition.x, imagePosition.y)
                             }
                         }
                     }
@@ -342,59 +228,31 @@ fun ViewerCanvas(
             },
         contentAlignment = Alignment.Center
     ) {
-
         if (bitmap != null) {
-
             Image(
-                bitmap =
-                    bitmap.asImageBitmap(),
-
-                contentDescription =
-                    "Current frame",
-
-                contentScale =
-                    ContentScale.Fit,
-
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-
-                            scaleX =
-                                transform.zoom
-
-                            scaleY =
-                                transform.zoom
-
-                            translationX =
-                                transform.panX
-
-                            translationY =
-                                transform.panY
-                        }
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = "Current frame",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = transform.zoom
+                        scaleY = transform.zoom
+                        translationX = transform.panX
+                        translationY = transform.panY
+                    }
             )
 
             if (showZoomLabel) {
                 Text(
-                    text =
-                        "${(transform.zoom * 100f).toInt()}%",
-
-                    color =
-                        TextSecondary,
-
-                    modifier =
-                        Modifier.align(
-                            Alignment.TopEnd
-                        )
+                    text = "${(transform.zoom * 100f).toInt()}%",
+                    color = TextSecondary,
+                    modifier = Modifier.align(Alignment.TopEnd)
                 )
             }
-
         } else if (isLoading) {
-
             CircularProgressIndicator()
-
         } else {
-
             Text(
                 text = "No frame loaded",
                 color = TextSecondary
@@ -408,7 +266,6 @@ private fun clampTransform(
     bitmap: Bitmap?,
     containerSize: IntSize
 ): ViewerTransform {
-
     if (
         bitmap == null ||
         containerSize.width <= 0 ||
@@ -417,68 +274,31 @@ private fun clampTransform(
         return transform
     }
 
-    val imageWidth =
-        bitmap.width.toFloat()
+    val imageWidth = bitmap.width.toFloat()
+    val imageHeight = bitmap.height.toFloat()
+    val containerWidth = containerSize.width.toFloat()
+    val containerHeight = containerSize.height.toFloat()
 
-    val imageHeight =
-        bitmap.height.toFloat()
+    val fitScale = min(
+        containerWidth / imageWidth,
+        containerHeight / imageHeight
+    )
 
-    val containerWidth =
-        containerSize.width.toFloat()
+    val fittedWidth = imageWidth * fitScale
+    val fittedHeight = imageHeight * fitScale
+    val scaledWidth = fittedWidth * transform.zoom
+    val scaledHeight = fittedHeight * transform.zoom
 
-    val containerHeight =
-        containerSize.height.toFloat()
-
-    val fitScale =
-        min(
-            containerWidth / imageWidth,
-            containerHeight / imageHeight
-        )
-
-    val fittedWidth =
-        imageWidth * fitScale
-
-    val fittedHeight =
-        imageHeight * fitScale
-
-    val scaledWidth =
-        fittedWidth * transform.zoom
-
-    val scaledHeight =
-        fittedHeight * transform.zoom
-
-    val maxPanX =
-        max(
-            0f,
-            (scaledWidth - containerWidth) /
-                2f
-        )
-
-    val maxPanY =
-        max(
-            0f,
-            (scaledHeight - containerHeight) /
-                2f
-        )
+    val maxPanX = max(0f, (scaledWidth - containerWidth) / 2f)
+    val maxPanY = max(0f, (scaledHeight - containerHeight) / 2f)
 
     return transform.copy(
-        zoom =
-            transform.zoom.coerceIn(
-                ViewerTransform.MIN_ZOOM,
-                ViewerTransform.MAX_ZOOM
-            ),
-
-        panX =
-            transform.panX.coerceIn(
-                -maxPanX,
-                maxPanX
-            ),
-
-        panY =
-            transform.panY.coerceIn(
-                -maxPanY,
-                maxPanY
-            )
+        zoom = transform.zoom.coerceIn(
+            ViewerTransform.MIN_ZOOM,
+            ViewerTransform.MAX_ZOOM
+        ),
+        panX = transform.panX.coerceIn(-maxPanX, maxPanX),
+        panY = transform.panY.coerceIn(-maxPanY, maxPanY)
     )
 }
 
@@ -488,80 +308,34 @@ private fun screenToImageCoordinates(
     containerSize: IntSize,
     transform: ViewerTransform
 ): Offset? {
+    if (containerSize.width <= 0 || containerSize.height <= 0) return null
 
-    if (
-        containerSize.width <= 0 ||
-        containerSize.height <= 0
-    ) {
-        return null
-    }
+    val imageWidth = bitmap.width.toFloat()
+    val imageHeight = bitmap.height.toFloat()
+    val containerWidth = containerSize.width.toFloat()
+    val containerHeight = containerSize.height.toFloat()
 
-    val imageWidth =
-        bitmap.width.toFloat()
+    val fitScale = min(
+        containerWidth / imageWidth,
+        containerHeight / imageHeight
+    )
+    if (fitScale <= 0f) return null
 
-    val imageHeight =
-        bitmap.height.toFloat()
+    val fittedWidth = imageWidth * fitScale
+    val fittedHeight = imageHeight * fitScale
+    val baseLeft = (containerWidth - fittedWidth) / 2f
+    val baseTop = (containerHeight - fittedHeight) / 2f
 
-    val containerWidth =
-        containerSize.width.toFloat()
+    val centerX = containerWidth / 2f
+    val centerY = containerHeight / 2f
 
-    val containerHeight =
-        containerSize.height.toFloat()
-
-    val fitScale =
-        min(
-            containerWidth / imageWidth,
-            containerHeight / imageHeight
-        )
-
-    if (fitScale <= 0f) {
-        return null
-    }
-
-    val fittedWidth =
-        imageWidth * fitScale
-
-    val fittedHeight =
-        imageHeight * fitScale
-
-    val baseLeft =
-        (containerWidth - fittedWidth) /
-            2f
-
-    val baseTop =
-        (containerHeight - fittedHeight) /
-            2f
-
-    val centerX =
-        containerWidth / 2f
-
-    val centerY =
-        containerHeight / 2f
-
-    /*
-     * Reverse graphicsLayer transformation.
-     */
     val unscaledX =
-        (
-            position.x -
-                centerX -
-                transform.panX
-        ) / transform.zoom +
-            centerX
-
+        (position.x - centerX - transform.panX) / transform.zoom + centerX
     val unscaledY =
-        (
-            position.y -
-                centerY -
-                transform.panY
-        ) / transform.zoom +
-            centerY
+        (position.y - centerY - transform.panY) / transform.zoom + centerY
 
-    val localX =
-        unscaledX - baseLeft
-
-    val localY =
-        unscaledY - baseTop
+    val localX = unscaledX - baseLeft
+    val localY = unscaledY - baseTop
 
     if (
         localX < 0f ||
@@ -573,18 +347,7 @@ private fun screenToImageCoordinates(
     }
 
     return Offset(
-        x = (
-            localX / fitScale
-        ).coerceIn(
-            0f,
-            imageWidth
-        ),
-
-        y = (
-            localY / fitScale
-        ).coerceIn(
-            0f,
-            imageHeight
-        )
+        x = (localX / fitScale).coerceIn(0f, imageWidth),
+        y = (localY / fitScale).coerceIn(0f, imageHeight)
     )
 }

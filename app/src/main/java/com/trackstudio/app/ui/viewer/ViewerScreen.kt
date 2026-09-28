@@ -1,5 +1,6 @@
 package com.trackstudio.app.ui.viewer
 
+import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
@@ -9,10 +10,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,11 +22,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CropFree
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.FullscreenExit
 import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -46,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.trackstudio.app.playback.PlaybackState
 import com.trackstudio.app.ui.theme.AccentError
 import com.trackstudio.app.ui.theme.AccentPrimary
 import com.trackstudio.app.ui.theme.AccentSuccess
@@ -54,19 +58,9 @@ import com.trackstudio.app.ui.theme.PanelBorder
 import com.trackstudio.app.ui.theme.TextPrimary
 import com.trackstudio.app.ui.theme.TextSecondary
 import com.trackstudio.app.ui.theme.ViewerBackground
+import com.trackstudio.app.util.formatTimecode
 import com.trackstudio.app.viewmodel.ViewerViewModel
 
-/**
- * The tracking workspace: top bar, tool sidebar, large viewer with
- * playback below it, and a tool panel on the right.
- *
- * The layout adapts to the window size (landscape only):
- *  - wide tablets:   labelled sidebar + inline right panel + filmstrip
- *  - mid-size:       icon rail + inline right panel
- *  - phones:         icon rail, right panel slides over the viewer from
- *                    a top-bar button, single-row playback bar
- * so the viewer always gets as much of the screen as possible.
- */
 @Composable
 fun ViewerScreen(
     viewModel: ViewerViewModel,
@@ -78,13 +72,9 @@ fun ViewerScreen(
     val state by viewModel.uiState.collectAsState()
 
     LaunchedEffect(frameUris, fps) {
-        viewModel.loadSequence(
-            uris = frameUris,
-            fps = fps
-        )
+        viewModel.loadSequence(frameUris, fps)
     }
 
-    // Stop playback when the app leaves the foreground.
     val lifecycleOwner = LocalLifecycleOwner.current
 
     DisposableEffect(lifecycleOwner) {
@@ -93,12 +83,8 @@ fun ViewerScreen(
                 viewModel.pause()
             }
         }
-
         lifecycleOwner.lifecycle.addObserver(observer)
-
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     var zoom by remember { mutableFloatStateOf(1f) }
@@ -128,8 +114,7 @@ fun ViewerScreen(
         val panelWidth = if (windowWidth >= 1100.dp) 320.dp else 280.dp
         val gap = if (compactHeight) 8.dp else 12.dp
 
-        Column(modifier = Modifier.fillMaxSize()) {
-
+        Column(Modifier.fillMaxSize()) {
             if (!fullscreen) {
                 WorkspaceTopBar(
                     projectName = projectName,
@@ -146,7 +131,6 @@ fun ViewerScreen(
                     .weight(1f)
                     .fillMaxWidth()
             ) {
-
                 if (!fullscreen) {
                     WorkspaceSidebar(
                         mode = sidebarMode,
@@ -164,17 +148,18 @@ fun ViewerScreen(
                         if (fullscreen) Arrangement.Top
                         else Arrangement.spacedBy(gap)
                 ) {
-
                     ViewerPanel(
                         bitmap = state.currentBitmap,
                         isLoading = state.isLoadingFrame,
                         errorMessage = state.errorMessage,
+                        playback = state.playback,
                         zoom = zoom,
                         onZoomChanged = { zoom = it },
-                        onFit = { zoom = 1f },
                         compact = compactHeight,
                         fullscreen = fullscreen,
                         onToggleFullscreen = { fullscreen = !fullscreen },
+                        onPlayPause = viewModel::playPause,
+                        onSeek = viewModel::seekTo,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
@@ -201,15 +186,17 @@ fun ViewerScreen(
                         modifier = Modifier
                             .width(panelWidth)
                             .fillMaxHeight()
-                            .padding(top = gap, end = gap, bottom = gap)
+                            .padding(
+                                top = gap,
+                                end = gap,
+                                bottom = gap
+                            )
                     )
                 }
             }
         }
 
-        // Narrow screens: the tool panel slides over the viewer.
         if (panelOpen && !inlinePanel && !fullscreen) {
-
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -231,24 +218,24 @@ fun ViewerScreen(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Viewer with overlays
-// ---------------------------------------------------------------------------
-
 @Composable
 private fun ViewerPanel(
-    bitmap: android.graphics.Bitmap?,
+    bitmap: Bitmap?,
     isLoading: Boolean,
     errorMessage: String?,
+    playback: PlaybackState,
     zoom: Float,
     onZoomChanged: (Float) -> Unit,
-    onFit: () -> Unit,
     compact: Boolean,
     fullscreen: Boolean,
     onToggleFullscreen: () -> Unit,
+    onPlayPause: () -> Unit,
+    onSeek: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val shape = if (fullscreen) RoundedCornerShape(0.dp) else RoundedCornerShape(12.dp)
+    val shape =
+        if (fullscreen) RoundedCornerShape(0.dp)
+        else RoundedCornerShape(12.dp)
 
     Box(
         modifier = modifier
@@ -261,7 +248,6 @@ private fun ViewerPanel(
                 shape
             )
     ) {
-
         ViewerCanvas(
             bitmap = bitmap,
             isLoading = isLoading,
@@ -272,11 +258,10 @@ private fun ViewerPanel(
             modifier = Modifier.fillMaxSize()
         )
 
-        // "3D View" badge (placeholder for the future 2D/3D switch).
         OverlayChip(
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .padding(10.dp),
+                .padding(if (compact) 8.dp else 10.dp),
             compact = compact
         ) {
             Icon(
@@ -285,7 +270,6 @@ private fun ViewerPanel(
                 tint = AccentPrimary,
                 modifier = Modifier.size(if (compact) 16.dp else 18.dp)
             )
-
             Text(
                 text = "3D View",
                 color = TextPrimary,
@@ -294,30 +278,28 @@ private fun ViewerPanel(
             )
         }
 
-        // Fit-to-window (resets zoom and pan).
-        OverlayChip(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(10.dp),
-            compact = compact,
-            onClick = onFit
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.CropFree,
-                contentDescription = null,
-                tint = TextPrimary,
-                modifier = Modifier.size(if (compact) 16.dp else 18.dp)
-            )
-
-            Text(
-                text = "Fit",
-                color = TextPrimary,
-                fontSize = if (compact) 12.sp else 13.sp,
-                modifier = Modifier.padding(start = 6.dp)
-            )
-        }
-
-        if (fullscreen) {
+        if (!fullscreen) {
+            OverlayChip(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(if (compact) 8.dp else 10.dp),
+                compact = compact,
+                onClick = onToggleFullscreen
+            ) {
+                Icon(
+                    imageVector = androidx.compose.material.icons.outlined.Fullscreen,
+                    contentDescription = "Fullscreen",
+                    tint = TextPrimary,
+                    modifier = Modifier.size(if (compact) 16.dp else 18.dp)
+                )
+                Text(
+                    text = "Fullscreen",
+                    color = TextPrimary,
+                    fontSize = if (compact) 12.sp else 13.sp,
+                    modifier = Modifier.padding(start = 6.dp)
+                )
+            }
+        } else {
             OverlayChip(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -331,7 +313,6 @@ private fun ViewerPanel(
                     tint = TextPrimary,
                     modifier = Modifier.size(if (compact) 18.dp else 20.dp)
                 )
-
                 Text(
                     text = "Exit",
                     color = TextPrimary,
@@ -341,16 +322,27 @@ private fun ViewerPanel(
             }
         }
 
-        // Axis legend.
-        OverlayChip(
+        AxisLegend(
+            compact = compact,
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(10.dp),
-            compact = compact
-        ) {
-            AxisLabel("+X", AccentError, compact)
-            AxisLabel("+Y", AccentSuccess, compact)
-            AxisLabel("+Z", AccentPrimary, compact)
+                .padding(if (compact) 8.dp else 10.dp)
+        )
+
+        if (fullscreen && playback.frameCount > 0) {
+            FullscreenPlayback(
+                playback = playback,
+                compact = compact,
+                onPlayPause = onPlayPause,
+                onSeek = onSeek,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = if (compact) 8.dp else 18.dp,
+                        vertical = if (compact) 8.dp else 14.dp
+                    )
+            )
         }
 
         if (errorMessage != null) {
@@ -366,6 +358,81 @@ private fun ViewerPanel(
                     .padding(horizontal = 10.dp, vertical = 6.dp)
             )
         }
+    }
+}
+
+@Composable
+private fun FullscreenPlayback(
+    playback: PlaybackState,
+    compact: Boolean,
+    onPlayPause: () -> Unit,
+    onSeek: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val maxFrame = (playback.frameCount - 1).coerceAtLeast(1)
+    val progress = playback.currentFrame.toFloat() / maxFrame.toFloat()
+
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color(0xE60B1220))
+            .border(
+                BorderStroke(1.dp, PanelBorder),
+                RoundedCornerShape(10.dp)
+            )
+            .padding(
+                horizontal = if (compact) 8.dp else 12.dp,
+                vertical = if (compact) 4.dp else 6.dp
+            ),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ChromeIconButton(
+            icon = if (playback.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+            contentDescription = if (playback.isPlaying) "Pause" else "Play",
+            onClick = onPlayPause,
+            enabled = playback.frameCount > 0,
+            tint = TextPrimary,
+            buttonSize = if (compact) 34.dp else 40.dp,
+            iconSize = if (compact) 20.dp else 24.dp
+        )
+
+        Text(
+            text = formatTimecode(playback.currentFrame, playback.fps),
+            color = TextPrimary,
+            fontSize = if (compact) 9.sp else 10.sp,
+            modifier = Modifier.padding(horizontal = 6.dp)
+        )
+
+        Slider(
+            value = progress,
+            onValueChange = { value ->
+                onSeek((value * maxFrame).toInt().coerceIn(0, maxFrame))
+            },
+            modifier = Modifier.weight(1f),
+            valueRange = 0f..1f
+        )
+
+        Text(
+            text = formatTimecode(maxFrame, playback.fps),
+            color = TextSecondary,
+            fontSize = if (compact) 9.sp else 10.sp,
+            modifier = Modifier.padding(start = 6.dp)
+        )
+    }
+}
+
+@Composable
+private fun AxisLegend(
+    compact: Boolean,
+    modifier: Modifier = Modifier
+) {
+    OverlayChip(
+        modifier = modifier,
+        compact = compact
+    ) {
+        AxisLabel("+X", AccentError, compact)
+        AxisLabel("+Y", AccentSuccess, compact)
+        AxisLabel("+Z", AccentPrimary, compact)
     }
 }
 

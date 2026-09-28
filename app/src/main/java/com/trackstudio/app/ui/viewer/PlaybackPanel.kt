@@ -8,15 +8,14 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,7 +30,6 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.Fullscreen
-import androidx.compose.material.icons.outlined.FullscreenExit
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -81,50 +79,47 @@ fun PlaybackPanel(
     val playback = state.playback
     val hasFrames = playback.frameCount > 0
 
-    PanelCard(modifier = modifier.fillMaxWidth()) {
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val sampleCount =
-                when {
-                    playback.frameCount <= 24 -> playback.frameCount
-                    compact -> 28
-                    else -> 40
-                }.coerceIn(1, 48)
+    PanelCard(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(if (compact) 82.dp else 94.dp)
+    ) {
+        val sampleCount = when {
+            playback.frameCount <= 12 -> playback.frameCount
+            compact -> 16
+            else -> 24
+        }.coerceIn(1, 24)
 
-            LaunchedEffect(sampleCount, playback.frameCount) {
-                if (hasFrames) onThumbnailsNeeded(sampleCount)
-            }
+        LaunchedEffect(sampleCount, playback.frameCount) {
+            if (hasFrames) onThumbnailsNeeded(sampleCount)
+        }
 
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal = if (compact) 8.dp else 12.dp,
-                        vertical = if (compact) 6.dp else 8.dp
-                    )
-            ) {
-                PlaybackHeader(
-                    playback = playback,
-                    compact = compact,
-                    hasFrames = hasFrames,
-                    isFullscreen = isFullscreen,
-                    onPlayPause = onPlayPause,
-                    onFirstFrame = onFirstFrame,
-                    onLastFrame = onLastFrame,
-                    onSpeedChanged = onSpeedChanged,
-                    onToggleFullscreen = onToggleFullscreen
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(
+                    horizontal = if (compact) 8.dp else 12.dp,
+                    vertical = if (compact) 4.dp else 6.dp
                 )
+        ) {
+            PlaybackHeader(
+                playback = playback,
+                compact = compact,
+                hasFrames = hasFrames,
+                onPlayPause = onPlayPause,
+                onFirstFrame = onFirstFrame,
+                onLastFrame = onLastFrame,
+                onSpeedChanged = onSpeedChanged,
+                onToggleFullscreen = onToggleFullscreen
+            )
 
-                Spacer(Modifier.height(if (compact) 5.dp else 7.dp))
-
-                Timeline(
-                    thumbnails = state.thumbnails,
-                    frameCount = playback.frameCount,
-                    fps = playback.fps,
-                    currentFrame = playback.currentFrame,
-                    compact = compact,
-                    onSeek = onSeek
-                )
-            }
+            TimelineStrip(
+                thumbnails = state.thumbnails,
+                frameCount = playback.frameCount,
+                currentFrame = playback.currentFrame,
+                compact = compact,
+                onSeek = onSeek
+            )
         }
     }
 }
@@ -134,20 +129,39 @@ private fun PlaybackHeader(
     playback: PlaybackState,
     compact: Boolean,
     hasFrames: Boolean,
-    isFullscreen: Boolean,
     onPlayPause: () -> Unit,
     onFirstFrame: () -> Unit,
     onLastFrame: () -> Unit,
     onSpeedChanged: (Double) -> Unit,
     onToggleFullscreen: () -> Unit
 ) {
-    Box(
-        modifier = Modifier.fillMaxWidth(),
-        contentAlignment = Alignment.Center
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(if (compact) 32.dp else 36.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
+        Text(
+            text = "F" + playback.frameNumber + " / F" + playback.frameCount,
+            color = TextPrimary,
+            fontSize = if (compact) 9.sp else 10.sp
+        )
+
+        Spacer(Modifier.width(6.dp))
+
+        Text(
+            text = formatTimecode(playback.currentFrame, playback.fps) +
+                " / " +
+                formatTimecode(maxOf(0, playback.frameCount - 1), playback.fps),
+            color = TextSecondary,
+            fontSize = if (compact) 9.sp else 10.sp
+        )
+
+        Spacer(Modifier.weight(1f))
+
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 4.dp)
+            horizontalArrangement = Arrangement.spacedBy(1.dp)
         ) {
             ChromeIconButton(
                 icon = Icons.Filled.SkipPrevious,
@@ -155,8 +169,8 @@ private fun PlaybackHeader(
                 onClick = onFirstFrame,
                 enabled = hasFrames && !playback.isFirstFrame,
                 tint = TextPrimary,
-                buttonSize = if (compact) 36.dp else 40.dp,
-                iconSize = if (compact) 20.dp else 22.dp
+                buttonSize = if (compact) 30.dp else 34.dp,
+                iconSize = if (compact) 17.dp else 19.dp
             )
 
             ChromeIconButton(
@@ -165,8 +179,8 @@ private fun PlaybackHeader(
                 onClick = onPlayPause,
                 enabled = hasFrames,
                 tint = TextPrimary,
-                buttonSize = if (compact) 42.dp else 46.dp,
-                iconSize = if (compact) 26.dp else 30.dp,
+                buttonSize = if (compact) 32.dp else 36.dp,
+                iconSize = if (compact) 20.dp else 23.dp,
                 background = if (playback.isPlaying) PanelSurfaceRaised else Color.Transparent
             )
 
@@ -176,55 +190,30 @@ private fun PlaybackHeader(
                 onClick = onLastFrame,
                 enabled = hasFrames && !playback.isLastFrame,
                 tint = TextPrimary,
-                buttonSize = if (compact) 36.dp else 40.dp,
-                iconSize = if (compact) 20.dp else 22.dp
+                buttonSize = if (compact) 30.dp else 34.dp,
+                iconSize = if (compact) 17.dp else 19.dp
             )
         }
 
-        Row(
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .padding(start = if (compact) 4.dp else 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "F${playback.frameNumber} / F${playback.frameCount}",
-                color = TextPrimary,
-                fontSize = if (compact) 11.sp else 12.sp
-            )
+        Spacer(Modifier.weight(1f))
 
-            Text(
-                text = "  " +
-                    formatTimecode(playback.currentFrame, playback.fps) +
-                    " / " +
-                    formatTimecode(
-                        maxOf(0, playback.frameCount - 1),
-                        playback.fps
-                    ),
-                color = TextSecondary,
-                fontSize = if (compact) 10.sp else 11.sp
-            )
-        }
+        SpeedMenu(
+            speed = playback.speed,
+            compact = compact,
+            enabled = hasFrames,
+            onSpeedChanged = onSpeedChanged
+        )
 
-        Row(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .padding(end = if (compact) 2.dp else 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            SpeedMenu(
-                speed = playback.speed,
-                compact = compact,
-                enabled = hasFrames,
-                onSpeedChanged = onSpeedChanged
-            )
-
-            FullscreenButton(
-                isFullscreen = isFullscreen,
-                onToggle = onToggleFullscreen,
-                compact = compact
-            )
-        }
+        ChromeIconButton(
+            icon = Icons.Outlined.Fullscreen,
+            contentDescription = "Fullscreen",
+            onClick = onToggleFullscreen,
+            enabled = hasFrames,
+            tint = TextSecondary,
+            buttonSize = if (compact) 30.dp else 34.dp,
+            iconSize = if (compact) 18.dp else 20.dp,
+            modifier = Modifier.padding(start = 2.dp)
+        )
     }
 }
 
@@ -240,12 +229,12 @@ private fun SpeedMenu(
     Box {
         Row(
             modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .border(BorderStroke(1.dp, PanelBorder), RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(7.dp))
+                .border(BorderStroke(1.dp, PanelBorder), RoundedCornerShape(7.dp))
                 .clickable(enabled = enabled) { expanded = true }
                 .padding(
-                    horizontal = if (compact) 7.dp else 9.dp,
-                    vertical = if (compact) 5.dp else 7.dp
+                    horizontal = if (compact) 5.dp else 7.dp,
+                    vertical = 3.dp
                 ),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -253,21 +242,19 @@ private fun SpeedMenu(
                 imageVector = Icons.Outlined.Speed,
                 contentDescription = "Playback speed",
                 tint = if (enabled) TextSecondary else TextDisabled,
-                modifier = Modifier.size(if (compact) 15.dp else 17.dp)
+                modifier = Modifier.size(if (compact) 13.dp else 15.dp)
             )
-
             Text(
                 text = formatSpeed(speed),
                 color = if (enabled) TextPrimary else TextDisabled,
-                fontSize = if (compact) 10.sp else 11.sp,
-                modifier = Modifier.padding(start = 4.dp)
+                fontSize = if (compact) 9.sp else 10.sp,
+                modifier = Modifier.padding(start = 3.dp)
             )
-
             Icon(
                 imageVector = Icons.Outlined.ArrowDropDown,
                 contentDescription = null,
                 tint = TextSecondary,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(14.dp)
             )
         }
 
@@ -290,48 +277,29 @@ private fun SpeedMenu(
 
 private fun formatSpeed(speed: Double): String =
     if (speed == speed.toInt().toDouble()) {
-        "${speed.toInt()}.0x"
+        speed.toInt().toString() + ".0x"
     } else {
-        "${speed}x"
+        speed.toString() + "x"
     }
 
 @Composable
-private fun FullscreenButton(
-    isFullscreen: Boolean,
-    onToggle: () -> Unit,
-    compact: Boolean
-) {
-    ChromeIconButton(
-        icon = if (isFullscreen) Icons.Outlined.FullscreenExit else Icons.Outlined.Fullscreen,
-        contentDescription = if (isFullscreen) "Exit fullscreen" else "Fullscreen",
-        onClick = onToggle,
-        tint = TextSecondary,
-        buttonSize = if (compact) 36.dp else 40.dp,
-        iconSize = if (compact) 20.dp else 22.dp,
-        modifier = Modifier.padding(start = 2.dp)
-    )
-}
-
-@Composable
-private fun Timeline(
+private fun TimelineStrip(
     thumbnails: Map<Int, Bitmap>,
     frameCount: Int,
-    fps: Double,
     currentFrame: Int,
     compact: Boolean,
     onSeek: (Int) -> Unit
 ) {
     if (frameCount <= 0) return
 
-    val sampleCount =
-        when {
-            frameCount <= 24 -> frameCount
-            compact -> 28
-            else -> 40
-        }.coerceIn(1, 48)
+    val sampleCount = when {
+        frameCount <= 12 -> frameCount
+        compact -> 16
+        else -> 24
+    }.coerceIn(1, 24)
 
     val indices = remember(frameCount, sampleCount) {
-        if (sampleCount <= 1 || frameCount == 1) {
+        if (sampleCount == 1) {
             listOf(0)
         } else {
             (0 until sampleCount)
@@ -342,144 +310,103 @@ private fun Timeline(
         }
     }
 
-    val currentSegment =
-        indices.indexOfLast { it <= currentFrame }.coerceAtLeast(0)
-
+    val segment = currentSegment(indices, currentFrame)
     val listState = rememberLazyListState()
 
-    LaunchedEffect(currentSegment) {
-        listState.animateScrollToItem(currentSegment)
+    LaunchedEffect(segment) {
+        if (indices.isNotEmpty()) {
+            listState.animateScrollToItem(segment.coerceIn(0, indices.lastIndex))
+        }
     }
 
-    Column {
+    Column(Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "START  F1",
+                text = "00:00",
                 color = TextSecondary,
-                fontSize = if (compact) 9.sp else 10.sp
-            )
-
-            Spacer(Modifier.weight(1f))
-
-            Text(
-                text = "FRAME ${currentFrame + 1}",
-                color = TextPrimary,
-                fontSize = if (compact) 9.sp else 10.sp
-            )
-
-            Spacer(Modifier.weight(1f))
-
-            Text(
-                text = "END  F${frameCount}",
-                color = TextSecondary,
-                fontSize = if (compact) 9.sp else 10.sp
-            )
-        }
-
-        LazyRow(
-            state = listState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(if (compact) 72.dp else 84.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(ViewerBackground)
-                .border(
-                    BorderStroke(1.dp, PanelBorder),
-                    RoundedCornerShape(8.dp)
-                ),
-            contentPadding = PaddingValues(
-                horizontal = if (compact) 5.dp else 7.dp,
-                vertical = 5.dp
-            ),
-            horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 6.dp)
-        ) {
-            itemsIndexed(
-                items = indices,
-                key = { _, frameIndex -> frameIndex }
-            ) { itemPosition, frameIndex ->
-                val nextIndex = indices.getOrNull(itemPosition + 1) ?: frameCount
-                val selected =
-                    currentFrame >= frameIndex && currentFrame < nextIndex
-
-                TimelineThumbnail(
-                    bitmap = thumbnails[frameIndex],
-                    frameIndex = frameIndex,
-                    fps = fps,
-                    selected = selected,
-                    compact = compact,
-                    onClick = { onSeek(frameIndex) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun TimelineThumbnail(
-    bitmap: Bitmap?,
-    frameIndex: Int,
-    fps: Double,
-    selected: Boolean,
-    compact: Boolean,
-    onClick: () -> Unit
-) {
-    val shape = RoundedCornerShape(6.dp)
-
-    Column(
-        modifier = Modifier
-            .width(if (compact) 84.dp else 108.dp)
-            .fillMaxHeight()
-            .clip(shape)
-            .background(if (selected) PanelSurfaceRaised else Color.Transparent)
-            .border(
-                BorderStroke(
-                    if (selected) 2.dp else 1.dp,
-                    if (selected) AccentPrimary else PanelBorder
-                ),
-                shape
-            )
-            .clickable(onClick = onClick)
-            .padding(2.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 3.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "F${frameIndex + 1}",
-                color = if (selected) TextPrimary else TextSecondary,
                 fontSize = if (compact) 8.sp else 9.sp
             )
-
             Spacer(Modifier.weight(1f))
-
             Text(
-                text = formatTimecode(frameIndex, fps),
-                color = TextDisabled,
-                fontSize = if (compact) 7.sp else 8.sp
+                text = "F" + (currentFrame + 1),
+                color = TextPrimary,
+                fontSize = if (compact) 8.sp else 9.sp
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = "F" + frameCount,
+                color = TextSecondary,
+                fontSize = if (compact) 8.sp else 9.sp
             )
         }
 
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
-                .clip(RoundedCornerShape(4.dp))
-                .background(PanelSurfaceRaised)
-        ) {
-            if (bitmap != null) {
-                Image(
-                    bitmap = bitmap.asImageBitmap(),
-                    contentDescription = "Frame ${frameIndex + 1}",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
+                .height(if (compact) 36.dp else 42.dp)
+                .clip(RoundedCornerShape(5.dp))
+                .background(ViewerBackground)
+                .border(
+                    BorderStroke(1.dp, PanelBorder),
+                    RoundedCornerShape(5.dp)
                 )
+        ) {
+            LazyRow(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.spacedBy(0.dp)
+            ) {
+                itemsIndexed(
+                    items = indices,
+                    key = { _, frameIndex -> frameIndex }
+                ) { itemPosition, frameIndex ->
+                    val nextFrame =
+                        indices.getOrNull(itemPosition + 1) ?: frameCount
+                    val isCurrent = currentFrame in frameIndex until nextFrame
+
+                    TimelineSegment(
+                        bitmap = thumbnails[frameIndex],
+                        selected = isCurrent,
+                        compact = compact,
+                        onClick = {
+                            onSeek(frameIndex)
+                        }
+                    )
+                }
             }
         }
     }
 }
+
+@Composable
+private fun TimelineSegment(
+    bitmap: Bitmap?,
+    selected: Boolean,
+    compact: Boolean,
+    onClick: () -> Unit
+) {
+    val width = if (compact) 52.dp else 64.dp
+
+    Box(
+        modifier = Modifier
+            .width(width)
+            .fillMaxHeight()
+            .clickable(onClick = onClick)
+            .background(if (selected) PanelSurfaceRaised else Color.Transparent)
+    ) {
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+    }
+}
+
+private fun currentSegment(indices: List<Int>, frame: Int): Int =
+    indices.indexOfLast { it <= frame }.coerceAtLeast(0)
