@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,35 +21,36 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.trackstudio.app.ui.theme.AccentPrimary
-import com.trackstudio.app.ui.theme.PanelBorder
-import com.trackstudio.app.ui.theme.PanelSurface
+import com.trackstudio.app.ui.theme.AccentBlue
+import com.trackstudio.app.ui.theme.BgCard
+import com.trackstudio.app.ui.theme.BgPanel
+import com.trackstudio.app.ui.theme.DividerCol
+import com.trackstudio.app.ui.theme.TextPrimary
 import com.trackstudio.app.ui.theme.TextSecondary
 
-/**
- * A flat, hairline-bordered panel - the base unit of the desktop-style
- * layout. Sharp-ish corners (4dp) on purpose; this UI is explicitly not
- * going for Material's usual rounded-card look.
- */
 @Composable
 fun Panel(
     modifier: Modifier = Modifier,
     title: String? = null,
-    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
+    content: @Composable ColumnScope.() -> Unit
 ) {
     Column(
         modifier = modifier
-            .background(PanelSurface, RoundedCornerShape(4.dp))
-            .border(BorderStroke(1.dp, PanelBorder), RoundedCornerShape(4.dp))
+            .background(BgPanel, RoundedCornerShape(6.dp))
+            .border(BorderStroke(1.dp, DividerCol), RoundedCornerShape(6.dp))
     ) {
         if (title != null) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF23252B), RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .background(BgCard, RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
+                    .padding(horizontal = 12.dp, vertical = 7.dp)
             ) {
-                Text(title.uppercase(), style = MaterialTheme.typography.labelLarge, color = TextSecondary)
+                Text(
+                    title.uppercase(),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = TextSecondary
+                )
             }
         }
         Column(modifier = Modifier.padding(12.dp)) {
@@ -57,7 +59,6 @@ fun Panel(
     }
 }
 
-/** Flat outlined button matching a desktop tool's toolbar buttons - no elevation, no fill by default. */
 @Composable
 fun DesktopButton(
     text: String,
@@ -70,13 +71,19 @@ fun DesktopButton(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier,
-        shape = RoundedCornerShape(3.dp),
+        shape = RoundedCornerShape(4.dp),
         colors = if (emphasized) {
-            ButtonDefaults.outlinedButtonColors(containerColor = AccentPrimary.copy(alpha = 0.15f))
+            ButtonDefaults.outlinedButtonColors(
+                containerColor = AccentBlue.copy(alpha = 0.16f),
+                contentColor = TextPrimary
+            )
         } else {
-            ButtonDefaults.outlinedButtonColors()
+            ButtonDefaults.outlinedButtonColors(
+                containerColor = Color.Transparent,
+                contentColor = TextPrimary
+            )
         },
-        border = BorderStroke(1.dp, if (emphasized) AccentPrimary else PanelBorder),
+        border = BorderStroke(1.dp, if (emphasized) AccentBlue else DividerCol),
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
     ) {
         Text(text, style = MaterialTheme.typography.labelLarge)
@@ -99,20 +106,34 @@ fun DesktopTextField(
         enabled = enabled,
         singleLine = singleLine,
         modifier = modifier,
-        shape = RoundedCornerShape(3.dp),
+        shape = RoundedCornerShape(4.dp),
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = AccentPrimary,
-            unfocusedBorderColor = PanelBorder
+            focusedBorderColor = AccentBlue,
+            unfocusedBorderColor = DividerCol,
+            focusedContainerColor = BgCard,
+            unfocusedContainerColor = BgCard
         ),
         textStyle = MaterialTheme.typography.bodyLarge
     )
 }
 
-/** A compact label/value row used throughout the settings panels (e.g. "Resolution   3840x2160"). */
 @Composable
-fun LabeledValueRow(label: String, value: String, modifier: Modifier = Modifier) {
+fun LabeledValueRow(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
     Row(modifier = modifier.fillMaxWidth()) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = TextSecondary, modifier = Modifier.padding(end = 8.dp))
-        Text(value, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextSecondary,
+            modifier = Modifier.padding(end = 8.dp)
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextPrimary
+        )
     }
 }
