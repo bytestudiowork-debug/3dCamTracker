@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clip
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -31,16 +30,19 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import com.trackstudio.app.ui.theme.AccentPrimary
 import com.trackstudio.app.ui.theme.PanelBorder
 import com.trackstudio.app.ui.theme.TextPrimary
@@ -183,21 +185,27 @@ private fun Timeline(
             Text("END  F${frameCount}", color = TextSecondary, fontSize = 10.sp)
         }
 
-        BoxWithConstraints(
-            Modifier.fillMaxWidth()
-                .padding(top = 4.dp)
-                .height(if (frameCount > 1) 64.dp else 54.dp)
-                .clip(RoundedCornerShape(7.dp))
-                .background(ViewerBackground)
-                .border(BorderStroke(1.dp, PanelBorder), RoundedCornerShape(7.dp))
-                .pointerInput(frameCount, maxWidth) {
-                    detectTapGestures { position ->
-                        val fraction = (position.x / maxWidth.toPx()).coerceIn(0f, 1f)
-                        onSeek(((fraction * (frameCount - 1)).roundToInt())
-                            .coerceIn(0, frameCount - 1))
-                    }
+        var timelineWidthPx by remember { mutableIntStateOf(1) }
+
+    Box(
+        Modifier.fillMaxWidth()
+            .padding(top = 4.dp)
+            .height(if (frameCount > 1) 64.dp else 54.dp)
+            .clip(RoundedCornerShape(7.dp))
+            .background(ViewerBackground)
+            .border(BorderStroke(1.dp, PanelBorder), RoundedCornerShape(7.dp))
+            .onSizeChanged { timelineWidthPx = it.width.coerceAtLeast(1) }
+            .pointerInput(frameCount, timelineWidthPx) {
+                detectTapGestures { position ->
+                    val fraction = (position.x / timelineWidthPx.toFloat()).coerceIn(0f, 1f)
+                    onSeek(
+                        (fraction * (frameCount - 1))
+                            .roundToInt()
+                            .coerceIn(0, frameCount - 1)
+                    )
                 }
-        ) {
+            }
+    ) {
             Row(Modifier.fillMaxSize()) {
                 indices.forEachIndexed { position, frameIndex ->
                     val nextIndex = indices.getOrNull(position + 1) ?: frameCount
@@ -228,7 +236,7 @@ private fun Timeline(
                 Modifier
                     .fillMaxHeight()
                     .width(2.dp)
-                    .offset(x = maxWidth * progress - 1.dp)
+                    .offset(x = with(androidx.compose.ui.platform.LocalDensity.current) { timelineWidthPx.toDp() } * progress - 1.dp)
                     .background(AccentPrimary)
             )
         }
