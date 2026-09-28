@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.FullscreenExit
 import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material3.Icon
@@ -287,7 +288,7 @@ private fun ViewerPanel(
                 onClick = onToggleFullscreen
             ) {
                 Icon(
-                    imageVector = androidx.compose.material.icons.outlined.Fullscreen,
+                    imageVector = Icons.Outlined.Fullscreen,
                     contentDescription = "Fullscreen",
                     tint = TextPrimary,
                     modifier = Modifier.size(if (compact) 16.dp else 18.dp)
