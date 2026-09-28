@@ -27,6 +27,7 @@ import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.ExperimentalComposeUiApi
 import com.trackstudio.app.ui.theme.PanelSurface
 import com.trackstudio.app.ui.theme.TextSecondary
 import kotlin.math.exp
@@ -44,6 +45,7 @@ data class ViewerTransform(
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun ViewerCanvas(
     bitmap: Bitmap?,
@@ -78,15 +80,6 @@ fun ViewerCanvas(
                 containerSize = size
                 transform = clampTransform(transform, bitmap, size)
             }
-            /*
-             * One gesture detector handles both:
-             *  - one-finger / mouse drag -> pan
-             *  - pinch -> zoom
-             *  - two-finger movement -> pan + zoom
-             *
-             * The old transform math mixed the gesture centroid with the
-             * existing translation twice, which effectively cancelled pan.
-             */
             .pointerInput(bitmap, containerSize) {
                 detectTransformGestures(
                     panZoomLock = false
@@ -109,8 +102,6 @@ fun ViewerCanvas(
                         containerSize.height / 2f
                     )
 
-                    // Keep the image point under the fingers/mouse stable
-                    // while zooming, then apply the actual drag delta once.
                     val newPanX =
                         centroid.x - center.x -
                             (centroid.x - center.x - transform.panX) * zoomRatio +
@@ -134,10 +125,6 @@ fun ViewerCanvas(
                     onZoomChanged?.invoke(transform.zoom)
                 }
             }
-            /*
-             * Mouse wheel zoom. Returning false for non-scroll events lets
-             * Compose's gesture detector receive normal mouse/touch drags.
-             */
             .pointerInteropFilter { event ->
                 if (bitmap == null || event.actionMasked != MotionEvent.ACTION_SCROLL) {
                     false
