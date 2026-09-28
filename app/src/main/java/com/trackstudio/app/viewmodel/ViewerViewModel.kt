@@ -10,6 +10,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.trackstudio.app.playback.PlaybackController
 import com.trackstudio.app.playback.PlaybackState
+import com.trackstudio.app.playback.VideoFrameDecoder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +36,10 @@ class ViewerViewModel(
         private const val MAX_DECODE_DIMENSION = 1920
         private const val MAX_CONCURRENT_DECODES = 2
         private const val PREFETCH_DISTANCE = 2
+
+        private val VIDEO_EXTENSIONS = setOf(
+            "mp4", "mov", "m4v", "mkv", "webm", "avi", "3gp", "mts", "mxf"
+        )
     }
 
     private val _uiState =
@@ -44,6 +49,13 @@ class ViewerViewModel(
         _uiState.asStateFlow()
 
     private var frameUris: List<Uri> = emptyList()
+
+    /*
+     * Video playback. The viewer was originally built for image
+     * sequences only; a single video file is decoded frame-by-frame
+     * through MediaCodec instead of BitmapFactory.
+     */
+    private var videoDecoder: VideoFrameDecoder? = null
 
     private val decodeSemaphore =
         Semaphore(MAX_CONCURRENT_DECODES)
@@ -94,10 +106,24 @@ class ViewerViewModel(
         fps: Double
     ) {
         cancelAllDecodeJobs()
+        releaseVideoDecoder()
 
         frameUris = uris.toList()
 
         bitmapCache.evictAll()
+
+        /*
+         * Single video file (e.g. MP4/MOV): decode it frame-by-frame
+         * with MediaCodec instead of BitmapFactory, which cannot read
+         * video containers. This is what previously made playback of
+         * imported videos fail silently ("can't play video").
+         */
+        val singleVideo = uris.singleOrNull()?.takeIf { isVideoUri(it) }
+
+        if (singleVideo != null) {
+            configureForVideo(singleVideo, fallbackFps = fps)
+            return
+        }
 
         playbackController.configure(
             frameCount = frameUris.size,
@@ -117,6 +143,76 @@ class ViewerViewModel(
         }
 
         loadFrame(0)
+    }
+
+    private fun configureForVideo(
+        uri: Uri,
+        fallbackFps: Double
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val decoder = VideoFrameDecoder(appContext, uri)
+
+            val result = runCatching { decoder.readInfo() }
+
+            withContext(Dispatchers.Main) {
+                result
+                    .onSuccess { info ->
+                        videoDecoder = decoder
+
+                        val effectiveFps =
+                            if (info.fps > 0.0) info.fps else fallbackFps
+
+                        playbackController.configure(
+                            frameCount = info.frameCount,
+                            fps = effectiveFps,
+                            currentFrame = 0
+                        )
+
+                        if (info.frameCount <= 0) {
+                            _uiState.value =
+                                ViewerUiState(
+                                    playback =
+                                        PlaybackState(
+                                            fps = effectiveFps
+                                        ),
+                                    errorMessage =
+                                        "This video contains no decodable frames."
+                                )
+                            releaseVideoDecoder()
+                        } else {
+                            loadFrame(0)
+                        }
+                    }
+                    .onFailure { error ->
+                        runCatching { decoder.release() }
+
+                        _uiState.value =
+                            ViewerUiState(
+                                playback =
+                                    PlaybackState(
+                                        fps = fallbackFps
+                                    ),
+                                errorMessage =
+                                    error.message
+                                        ?: "Unable to open this video file."
+                            )
+                    }
+            }
+        }
+    }
+
+    private fun isVideoUri(uri: Uri): Boolean {
+        val type =
+            appContext.contentResolver.getType(uri)
+
+        if (type != null) {
+            return type.startsWith("video/")
+        }
+
+        return uri.lastPathSegment
+            ?.substringAfterLast('.', "")
+            ?.lowercase()
+            in VIDEO_EXTENSIONS
     }
 
     fun playPause() {
@@ -157,7 +253,9 @@ class ViewerViewModel(
     private fun loadFrame(
         frameIndex: Int
     ) {
-        if (frameIndex !in frameUris.indices) {
+        val isVideo = videoDecoder != null
+
+        if (!isVideo && frameIndex !in frameUris.indices) {
             return
         }
 
@@ -269,6 +367,22 @@ class ViewerViewModel(
     private suspend fun decodeFrame(
         frameIndex: Int
     ): Bitmap {
+        /*
+         * Video path: MediaCodec decoding is inherently sequential, so
+         * we serialize it with the same semaphore used for images.
+         */
+        videoDecoder?.let { decoder ->
+            decodeSemaphore.acquire()
+            try {
+                return withContext(Dispatchers.IO) {
+                    decoder.decodeFrame(frameIndex)
+                        ?: error("Unable to decode video frame $frameIndex.")
+                }
+            } finally {
+                decodeSemaphore.release()
+            }
+        }
+
         decodeSemaphore.acquire()
 
         try {
@@ -357,6 +471,14 @@ class ViewerViewModel(
     private fun prefetchNearbyFrames(
         frameIndex: Int
     ) {
+        /*
+         * MediaCodec decoding is sequential; speculative prefetch of
+         * future frames would force re-seeks and corrupt ordering.
+         */
+        if (videoDecoder != null) {
+            return
+        }
+
         for (offset in 1..PREFETCH_DISTANCE) {
             val forwardIndex = frameIndex + offset
             if (forwardIndex in frameUris.indices) {
@@ -422,6 +544,11 @@ class ViewerViewModel(
         decodeJobs[frameIndex] = job
     }
 
+    private fun releaseVideoDecoder() {
+        videoDecoder?.release()
+        videoDecoder = null
+    }
+
     private fun cancelAllDecodeJobs() {
         decodeJobs.values.forEach { it.cancel() }
         decodeJobs.clear()
@@ -460,6 +587,7 @@ class ViewerViewModel(
     override fun onCleared() {
         cancelAllDecodeJobs()
         playbackController.release()
+        releaseVideoDecoder()
         bitmapCache.evictAll()
         super.onCleared()
     }

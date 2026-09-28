@@ -17,14 +17,17 @@ class PlaybackController(
     private var frameCount = 0
     private var fps = 24.0
     private var currentFrame = 0
+    private var loopEnabled = true
 
     fun configure(
         frameCount: Int,
         fps: Double,
-        currentFrame: Int = 0
+        currentFrame: Int = 0,
+        loop: Boolean = true
     ) {
         stop(notify = false)
 
+        this.loopEnabled = loop
         this.frameCount = frameCount.coerceAtLeast(0)
         this.fps = fps.coerceIn(1.0, 240.0)
 
@@ -87,7 +90,19 @@ class PlaybackController(
                     break
                 }
 
+                /*
+                 * Loop playback by default so the viewer behaves like
+                 * a real footage preview instead of stopping after one
+                 * pass through the sequence.
+                 */
                 if (currentFrame >= frameCount - 1) {
+                    if (loopEnabled) {
+                        currentFrame = 0
+                        onFrameChanged(currentFrame)
+                        nextFrameTime += frameIntervalNanos
+                        continue
+                    }
+
                     currentFrame = frameCount - 1
                     onFrameChanged(currentFrame)
                     stop()
