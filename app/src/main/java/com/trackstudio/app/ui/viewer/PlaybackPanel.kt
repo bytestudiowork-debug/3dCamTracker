@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clip
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -189,9 +190,9 @@ private fun Timeline(
                 .clip(RoundedCornerShape(7.dp))
                 .background(ViewerBackground)
                 .border(BorderStroke(1.dp, PanelBorder), RoundedCornerShape(7.dp))
-                .pointerInput(frameCount) {
+                .pointerInput(frameCount, maxWidth) {
                     detectTapGestures { position ->
-                        val fraction = (position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                        val fraction = (position.x / maxWidth.toPx()).coerceIn(0f, 1f)
                         onSeek(((fraction * (frameCount - 1)).roundToInt())
                             .coerceIn(0, frameCount - 1))
                     }
