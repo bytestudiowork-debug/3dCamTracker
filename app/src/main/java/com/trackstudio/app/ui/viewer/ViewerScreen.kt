@@ -127,11 +127,13 @@ fun ViewerScreen(
             .fillMaxSize()
             .background(PanelBackground)
     ) {
-        val compactHeight = maxHeight < 460.dp
+        val windowWidth = maxWidth
+        val windowHeight = maxHeight
+        val compactHeight = windowHeight < 460.dp
         val sidebarMode =
-            if (maxWidth >= 1000.dp) SidebarMode.FULL else SidebarMode.RAIL
-        val inlinePanel = maxWidth >= 840.dp
-        val panelWidth = if (maxWidth >= 1100.dp) 320.dp else 280.dp
+            if (windowWidth >= 1000.dp) SidebarMode.FULL else SidebarMode.RAIL
+        val inlinePanel = windowWidth >= 840.dp
+        val panelWidth = if (windowWidth >= 1100.dp) 320.dp else 280.dp
         val gap = if (compactHeight) 8.dp else 12.dp
 
         Column(modifier = Modifier.fillMaxSize()) {

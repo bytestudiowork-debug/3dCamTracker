@@ -34,7 +34,6 @@ import androidx.compose.material.icons.outlined.Redo
 import androidx.compose.material.icons.outlined.ScatterPlot
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.ShowChart
-import androidx.compose.material.icons.outlined.ThreeDRotation
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Undo
 import androidx.compose.material.icons.outlined.ViewInAr

@@ -177,7 +177,7 @@ fun PlaybackPanel(
 
                         TimeText(state)
 
-                        if (playback.frameCount > 0 && maxWidth > 560.dp) {
+                        if (playback.frameCount > 0 && availableWidth > 560.dp) {
                             Text(
                                 text = "Frame ${playback.frameNumber} / ${playback.frameCount}",
                                 color = TextSecondary,
