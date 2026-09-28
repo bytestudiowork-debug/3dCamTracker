@@ -5,6 +5,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.math.ceil
 
 /**
  * What the playback clock needs from whoever owns the decoded frames.
@@ -29,19 +30,15 @@ interface FrameSource {
 }
 
 /**
- * Clock-driven playback over an image sequence.
+ * Real-time playback clock over an image sequence.
  *
- * Design notes (this replaces the previous implementation, whose playback
- * appeared frozen):
+ * The clock is based on a monotonic nanosecond deadline rather than a
+ * repeating millisecond delay. This prevents integer-rounding error from
+ * accumulating and making playback faster than the selected FPS.
  *
- *  - The old clock fired a "load frame N" request every 1/fps seconds and
- *    each request cancelled the previous decode. Whenever decoding a frame
- *    took longer than one frame interval, *every* decode was superseded
- *    before it finished, so no new image was ever displayed.
- *  - Now the clock asks the [FrameSource] to present the next frame and
- *    waits for it. If decoding is slower than real time, playback simply
- *    runs slower (every frame is shown, none is dropped) instead of
- *    freezing, and the clock re-syncs rather than bursting to catch up.
+ * If decoding takes longer than a frame interval, playback does not burst
+ * through multiple frames to catch up. It resynchronizes to the next frame
+ * boundary, keeping motion timing stable.
  */
 class PlaybackController(
     private val scope: CoroutineScope,
@@ -90,43 +87,39 @@ class PlaybackController(
         onPlayingChanged(true)
 
         playbackJob = scope.launch {
+            val intervalNanos = frameIntervalNanos()
 
-            var nextFrameTime =
-                System.nanoTime() + frameIntervalNanos()
+            // The current frame is already visible. Schedule the next frame
+            // exactly one frame interval from the moment playback starts.
+            var nextFrameDeadline = System.nanoTime() + intervalNanos
 
-            while (isActive) {
-
+            while (isActive && currentFrame < frameCount - 1) {
                 source.prefetchForward(currentFrame)
 
-                val waitMillis =
-                    (nextFrameTime - System.nanoTime()) / 1_000_000L
+                waitUntil(nextFrameDeadline)
 
-                if (waitMillis > 0L) {
-                    delay(waitMillis)
-                }
-
-                if (currentFrame >= frameCount - 1) {
+                if (!isActive || currentFrame >= frameCount - 1) {
                     break
                 }
 
                 val target = currentFrame + 1
 
-                // May suspend for a while if this frame is still decoding.
+                // Presentation includes waiting for decode when necessary.
+                // Never advance the playhead before the target is presented.
                 source.presentFrame(target)
-
                 currentFrame = target
 
-                nextFrameTime += frameIntervalNanos()
+                nextFrameDeadline += intervalNanos
 
-                // Running late (slow decode): resync instead of bursting.
+                // A slow decode can make us miss the old deadline. Do not
+                // execute several frame transitions back-to-back. Give the
+                // next frame a complete interval from the current instant.
                 val now = System.nanoTime()
-                if (nextFrameTime < now) {
-                    nextFrameTime = now
+                if (nextFrameDeadline <= now) {
+                    nextFrameDeadline = now + intervalNanos
                 }
             }
 
-            // Reached the end (or was cancelled: the canceller already
-            // reported the state change).
             if (isActive) {
                 playbackJob = null
                 onPlayingChanged(false)
@@ -167,7 +160,6 @@ class PlaybackController(
         }
 
         currentFrame = frame.coerceIn(0, frameCount - 1)
-
         source.requestFrame(currentFrame)
     }
 
@@ -175,8 +167,29 @@ class PlaybackController(
         stop()
     }
 
+    /**
+     * Waits efficiently without a busy loop. Millisecond delays are rounded
+     * UP so scheduler precision can never make playback faster by truncating
+     * the remaining fractional millisecond.
+     */
+    private suspend fun waitUntil(deadlineNanos: Long) {
+        while (true) {
+            val remainingNanos = deadlineNanos - System.nanoTime()
+
+            if (remainingNanos <= 0L) {
+                return
+            }
+
+            val millis = ceil(remainingNanos / 1_000_000.0)
+                .toLong()
+                .coerceAtLeast(1L)
+
+            delay(millis)
+        }
+    }
+
     private fun frameIntervalNanos(): Long =
-        (1_000_000_000.0 / (fps))
+        (1_000_000_000.0 / fps)
             .toLong()
             .coerceAtLeast(1L)
 }
