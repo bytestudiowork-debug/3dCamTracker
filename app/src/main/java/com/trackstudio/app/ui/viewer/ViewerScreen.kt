@@ -1,334 +1,454 @@
 package com.trackstudio.app.ui.viewer
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Redo
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Undo
+import androidx.compose.material.icons.outlined.CropFree
+import androidx.compose.material.icons.outlined.Fullscreen
+import androidx.compose.material.icons.outlined.FullscreenExit
+import androidx.compose.material.icons.outlined.GpsFixed
+import androidx.compose.material.icons.outlined.NearMe
+import androidx.compose.material.icons.outlined.PanTool
+import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.trackstudio.app.ui.theme.AccentBlue
-import com.trackstudio.app.ui.theme.BgCard
-import com.trackstudio.app.ui.theme.BgDeep
-import com.trackstudio.app.ui.theme.BgPanel
-import com.trackstudio.app.ui.theme.BgViewport
-import com.trackstudio.app.ui.theme.DividerCol
-import com.trackstudio.app.ui.theme.TextMuted
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.trackstudio.app.ui.theme.AccentError
+import com.trackstudio.app.ui.theme.AccentPrimary
+import com.trackstudio.app.ui.theme.AccentSuccess
+import com.trackstudio.app.ui.theme.PanelBackground
+import com.trackstudio.app.ui.theme.PanelBorder
+import com.trackstudio.app.ui.theme.SelectedItemBackground
 import com.trackstudio.app.ui.theme.TextPrimary
 import com.trackstudio.app.ui.theme.TextSecondary
+import com.trackstudio.app.ui.theme.ViewerBackground
 import com.trackstudio.app.viewmodel.ViewerViewModel
 
+/**
+ * The tracking workspace: top bar, tool sidebar, large viewer with
+ * playback below it, and a tool panel on the right.
+ *
+ * The layout adapts to the window size (landscape only):
+ *  - wide tablets:   labelled sidebar + inline right panel + filmstrip
+ *  - mid-size:       icon rail + inline right panel
+ *  - phones:         icon rail, right panel slides over the viewer from
+ *                    a top-bar button, single-row playback bar
+ * so the viewer always gets as much of the screen as possible.
+ */
 @Composable
 fun ViewerScreen(
     viewModel: ViewerViewModel,
     frameUris: List<Uri>,
     fps: Double,
-    projectName: String = "Untitled Project",
-    onBack: () -> Unit
-) {
-    val state by viewModel.uiState.collectAsState()
-    var selectedZoom by remember { mutableFloatStateOf(1f) }
-
-    LaunchedEffect(frameUris, fps) {
-        viewModel.loadSequence(uris = frameUris, fps = fps)
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(BgDeep)
-    ) {
-        EditorTopBar(projectName = projectName, onBack = onBack)
-
-        Row(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-        ) {
-            EditorLeftTools()
-
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .padding(8.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .background(BgViewport, RoundedCornerShape(6.dp))
-                        .border(1.dp, DividerCol, RoundedCornerShape(6.dp))
-                ) {
-                    ViewerCanvas(
-                        bitmap = state.currentBitmap,
-                        isLoading = state.isLoadingFrame,
-                        requestedZoom = selectedZoom,
-                        onZoomChanged = { selectedZoom = it },
-                        modifier = Modifier.fillMaxSize()
-                    )
-
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        ZoomControl("FIT", selectedZoom == 1f) { selectedZoom = 1f }
-                        ZoomControl("100%", selectedZoom == 1f) { selectedZoom = 1f }
-                        ZoomControl("200%", selectedZoom == 2f) { selectedZoom = 2f }
-                        ZoomControl("400%", selectedZoom == 4f) { selectedZoom = 4f }
-                    }
-                }
-
-                Spacer(Modifier.height(8.dp))
-
-                EditorPlayback(
-                    isPlaying = state.playback.isPlaying,
-                    currentFrame = state.playback.currentFrame,
-                    frameCount = state.playback.frameCount,
-                    onFirstFrame = viewModel::firstFrame,
-                    onPreviousFrame = viewModel::previousFrame,
-                    onPlayPause = viewModel::playPause,
-                    onNextFrame = viewModel::nextFrame,
-                    onLastFrame = viewModel::lastFrame,
-                    fps = state.playback.fps,
-                    onSeek = viewModel::seekTo
-                )
-            }
-
-            EditorRightTools()
-        }
-    }
-
-    state.errorMessage?.let {
-        Text(
-            text = it,
-            color = MaterialTheme.colorScheme.error,
-            modifier = Modifier.padding(4.dp)
-        )
-    }
-}
-
-@Composable
-private fun EditorTopBar(
     projectName: String,
     onBack: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(52.dp)
-            .background(BgPanel)
-            .border(1.dp, DividerCol),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Spacer(Modifier.width(14.dp))
-        Text("TRACKSTUDIO", color = AccentBlue)
-        Spacer(Modifier.width(18.dp))
-        Text("/", color = TextMuted)
-        Spacer(Modifier.width(12.dp))
-        Text(projectName.ifBlank { "Untitled Project" }, color = TextPrimary)
+    val state by viewModel.uiState.collectAsState()
 
-        Spacer(Modifier.weight(1f))
-
-        IconButton(onClick = {}) {
-            Icon(Icons.Default.Undo, "Undo", tint = TextSecondary)
-        }
-        IconButton(onClick = {}) {
-            Icon(Icons.Default.Redo, "Redo", tint = TextSecondary)
-        }
-
-        TextButton(onClick = {}) {
-            Icon(Icons.Default.Settings, "Settings", tint = TextSecondary)
-            Spacer(Modifier.width(4.dp))
-            Text("SETTINGS", color = TextSecondary)
-        }
-
-        TextButton(onClick = {}) {
-            Text("EXPORT", color = TextSecondary)
-        }
-
-        IconButton(onClick = {}) {
-            Icon(Icons.Default.MoreVert, "More options", tint = TextPrimary)
-        }
-
-        IconButton(onClick = onBack) {
-            Icon(Icons.Default.Close, "Close project", tint = TextSecondary)
-        }
-
-        Spacer(Modifier.width(6.dp))
+    LaunchedEffect(frameUris, fps) {
+        viewModel.loadSequence(
+            uris = frameUris,
+            fps = fps
+        )
     }
-}
 
-@Composable
-private fun EditorLeftTools() {
-    val tools = listOf(
-        "⌂" to "Home",
-        "◎" to "Track",
-        "≡" to "Adjust",
-        "⬡" to "3D",
-        "▣" to "Camera",
-        "⁘" to "Points",
-        "✎" to "Mask",
-        "∿" to "Stabilize",
-        "▤" to "2D / 3D",
-        "▦" to "Grid",
-        "⌖" to "Axes",
-        "?" to "Help"
-    )
+    // Stop playback when the app leaves the foreground.
+    val lifecycleOwner = LocalLifecycleOwner.current
 
-    Column(
-        modifier = Modifier
-            .width(70.dp)
-            .fillMaxHeight()
-            .background(BgPanel)
-            .padding(vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        tools.forEachIndexed { index, (icon, label) ->
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 3.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(48.dp)
-                        .height(38.dp)
-                        .background(
-                            if (index == 1) AccentBlue else Color.Transparent,
-                            RoundedCornerShape(6.dp)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(icon, color = if (index == 1) Color.White else TextSecondary)
-                }
-                Text(label, color = TextSecondary, style = MaterialTheme.typography.labelSmall)
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                viewModel.pause()
             }
         }
-    }
-}
 
-@Composable
-private fun EditorRightTools() {
-    Column(
+        lifecycleOwner.lifecycle.addObserver(observer)
+
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    var zoom by remember { mutableFloatStateOf(1f) }
+    var sidebarSelection by remember { mutableStateOf("Home") }
+    var fullscreen by remember { mutableStateOf(false) }
+    var panelOpen by remember { mutableStateOf(false) }
+
+    BackHandler {
+        when {
+            panelOpen -> panelOpen = false
+            fullscreen -> fullscreen = false
+            else -> onBack()
+        }
+    }
+
+    BoxWithConstraints(
         modifier = Modifier
-            .width(250.dp)
-            .fillMaxHeight()
-            .background(BgPanel)
-            .padding(10.dp)
+            .fillMaxSize()
+            .background(PanelBackground)
     ) {
-        Text("TOOLS", color = TextPrimary, style = MaterialTheme.typography.titleSmall)
-        Spacer(Modifier.height(8.dp))
-        PlaceholderToolSection("Tracking")
-        PlaceholderToolSection("3D Reconstruction")
-        PlaceholderToolSection("Track Points")
-        PlaceholderToolSection("Masks")
-        PlaceholderToolSection("Camera")
-        PlaceholderToolSection("Display")
-        Spacer(Modifier.weight(1f))
-        Text(
-            "Tool controls will be added here.",
-            color = TextMuted,
-            style = MaterialTheme.typography.labelSmall
+        val compactHeight = maxHeight < 460.dp
+        val sidebarMode =
+            if (maxWidth >= 1000.dp) SidebarMode.FULL else SidebarMode.RAIL
+        val inlinePanel = maxWidth >= 840.dp
+        val panelWidth = if (maxWidth >= 1100.dp) 320.dp else 280.dp
+        val gap = if (compactHeight) 8.dp else 12.dp
+
+        Column(modifier = Modifier.fillMaxSize()) {
+
+            if (!fullscreen) {
+                WorkspaceTopBar(
+                    projectName = projectName,
+                    compact = compactHeight,
+                    showTitle = maxWidth >= 720.dp,
+                    showPanelToggle = !inlinePanel,
+                    onTogglePanel = { panelOpen = !panelOpen },
+                    onCloseProject = onBack
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+
+                if (!fullscreen) {
+                    WorkspaceSidebar(
+                        mode = sidebarMode,
+                        selected = sidebarSelection,
+                        onSelect = { sidebarSelection = it }
+                    )
+                }
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .padding(gap),
+                    verticalArrangement = Arrangement.spacedBy(gap)
+                ) {
+
+                    ViewerPanel(
+                        bitmap = state.currentBitmap,
+                        isLoading = state.isLoadingFrame,
+                        errorMessage = state.errorMessage,
+                        zoom = zoom,
+                        onZoomChanged = { zoom = it },
+                        onFit = { zoom = 1f },
+                        compact = compactHeight,
+                        isFullscreen = fullscreen,
+                        onToggleFullscreen = { fullscreen = !fullscreen },
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                    )
+
+                    PlaybackPanel(
+                        state = state,
+                        compact = compactHeight,
+                        isFullscreen = fullscreen,
+                        onToggleFullscreen = { fullscreen = !fullscreen },
+                        onPlayPause = viewModel::playPause,
+                        onPreviousFrame = viewModel::previousFrame,
+                        onNextFrame = viewModel::nextFrame,
+                        onSeek = viewModel::seekTo,
+                        onSpeedSelected = viewModel::setPlaybackSpeed,
+                        onThumbnailsNeeded = viewModel::ensureThumbnails
+                    )
+                }
+
+                if (inlinePanel && !fullscreen) {
+                    WorkspaceRightPanel(
+                        modifier = Modifier
+                            .width(panelWidth)
+                            .fillMaxHeight()
+                            .padding(top = gap, end = gap, bottom = gap)
+                    )
+                }
+            }
+        }
+
+        // Narrow screens: the tool panel slides over the viewer.
+        if (panelOpen && !inlinePanel && !fullscreen) {
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0x99000000))
+                    .pointerInput(Unit) {
+                        detectTapGestures { panelOpen = false }
+                    }
+            )
+
+            WorkspaceRightPanel(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .width(280.dp)
+                    .fillMaxHeight()
+                    .background(PanelBackground)
+                    .padding(10.dp)
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Viewer with overlays
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun ViewerPanel(
+    bitmap: android.graphics.Bitmap?,
+    isLoading: Boolean,
+    errorMessage: String?,
+    zoom: Float,
+    onZoomChanged: (Float) -> Unit,
+    onFit: () -> Unit,
+    compact: Boolean,
+    isFullscreen: Boolean,
+    onToggleFullscreen: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(12.dp)
+    var activeTool by remember { mutableIntStateOf(0) }
+
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .border(BorderStroke(1.dp, PanelBorder), shape)
+    ) {
+
+        ViewerCanvas(
+            bitmap = bitmap,
+            isLoading = isLoading,
+            requestedZoom = zoom,
+            onZoomChanged = onZoomChanged,
+            backgroundColor = ViewerBackground,
+            showZoomLabel = false,
+            modifier = Modifier.fillMaxSize()
         )
+
+        // "3D View" badge (placeholder for the future 2D/3D switch).
+        OverlayChip(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(10.dp),
+            compact = compact
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.ViewInAr,
+                contentDescription = null,
+                tint = AccentPrimary,
+                modifier = Modifier.size(if (compact) 16.dp else 18.dp)
+            )
+
+            Text(
+                text = "3D View",
+                color = TextPrimary,
+                fontSize = if (compact) 12.sp else 13.sp,
+                modifier = Modifier.padding(start = 6.dp)
+            )
+        }
+
+        // Fit-to-window (resets zoom and pan).
+        OverlayChip(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(10.dp),
+            compact = compact,
+            onClick = onFit
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.CropFree,
+                contentDescription = null,
+                tint = TextPrimary,
+                modifier = Modifier.size(if (compact) 16.dp else 18.dp)
+            )
+
+            Text(
+                text = "Fit",
+                color = TextPrimary,
+                fontSize = if (compact) 12.sp else 13.sp,
+                modifier = Modifier.padding(start = 6.dp)
+            )
+        }
+
+        // Vertical tool strip (placeholders, except the last one).
+        ToolStrip(
+            activeTool = activeTool,
+            onToolSelected = { activeTool = it },
+            isFullscreen = isFullscreen,
+            onToggleFullscreen = onToggleFullscreen,
+            compact = compact,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 10.dp)
+        )
+
+        // Axis legend.
+        OverlayChip(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(10.dp),
+            compact = compact
+        ) {
+            AxisLabel("+X", AccentError, compact)
+            AxisLabel("+Y", AccentSuccess, compact)
+            AxisLabel("+Z", AccentPrimary, compact)
+        }
+
+        if (errorMessage != null) {
+            Text(
+                text = errorMessage,
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 12.sp,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(10.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xCC0B1220))
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            )
+        }
     }
 }
 
 @Composable
-private fun PlaceholderToolSection(title: String) {
+private fun OverlayChip(
+    modifier: Modifier = Modifier,
+    compact: Boolean,
+    onClick: (() -> Unit)? = null,
+    content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit
+) {
+    val shape = RoundedCornerShape(10.dp)
+
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .background(BgCard, RoundedCornerShape(4.dp))
-            .padding(horizontal = 10.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(title, color = TextSecondary, modifier = Modifier.weight(1f))
-        Text("›", color = TextMuted)
-    }
+        modifier = modifier
+            .clip(shape)
+            .background(Color(0xCC0B1220))
+            .border(BorderStroke(1.dp, PanelBorder), shape)
+            .then(
+                if (onClick != null) Modifier.clickable(onClick = onClick)
+                else Modifier
+            )
+            .padding(
+                horizontal = if (compact) 8.dp else 12.dp,
+                vertical = if (compact) 5.dp else 8.dp
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        content = content
+    )
 }
 
 @Composable
-private fun EditorPlayback(
-    isPlaying: Boolean,
-    currentFrame: Int,
-    frameCount: Int,
-    onFirstFrame: () -> Unit,
-    onPreviousFrame: () -> Unit,
-    onPlayPause: () -> Unit,
-    onNextFrame: () -> Unit,
-    onLastFrame: () -> Unit,
-    fps: Double,
-    onSeek: (Int) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(BgPanel, RoundedCornerShape(6.dp))
-            .padding(8.dp)
-    ) {
-        ViewerControls(
-            isPlaying = isPlaying,
-            currentFrame = currentFrame,
-            frameCount = frameCount,
-            onFirstFrame = onFirstFrame,
-            onPreviousFrame = onPreviousFrame,
-            onPlayPause = onPlayPause,
-            onNextFrame = onNextFrame,
-            onLastFrame = onLastFrame,
-            modifier = Modifier.fillMaxWidth()
-        )
-        ViewerTimeline(
-            currentFrame = currentFrame,
-            frameCount = frameCount,
-            fps = fps,
-            onSeek = onSeek,
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
-}
-
-@Composable
-private fun ZoomControl(
+private fun AxisLabel(
     text: String,
-    selected: Boolean,
-    onClick: () -> Unit
+    color: Color,
+    compact: Boolean
 ) {
-    TextButton(onClick = onClick) {
-        Text(text, color = if (selected) AccentBlue else TextSecondary)
+    Text(
+        text = text,
+        color = color,
+        fontSize = if (compact) 11.sp else 12.sp
+    )
+}
+
+private data class ToolDef(
+    val icon: ImageVector,
+    val description: String
+)
+
+private val tools = listOf(
+    ToolDef(Icons.Outlined.NearMe, "Select"),
+    ToolDef(Icons.Outlined.PanTool, "Pan"),
+    ToolDef(Icons.Outlined.GpsFixed, "Track point"),
+    ToolDef(Icons.Outlined.CropFree, "Region")
+)
+
+@Composable
+private fun ToolStrip(
+    activeTool: Int,
+    onToolSelected: (Int) -> Unit,
+    isFullscreen: Boolean,
+    onToggleFullscreen: () -> Unit,
+    compact: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(12.dp)
+    val buttonSize = if (compact) 34.dp else 40.dp
+
+    Column(
+        modifier = modifier
+            .clip(shape)
+            .background(Color(0xCC0B1220))
+            .border(BorderStroke(1.dp, PanelBorder), shape)
+            .padding(4.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        tools.forEachIndexed { index, tool ->
+            ChromeIconButton(
+                icon = tool.icon,
+                contentDescription = tool.description,
+                onClick = { onToolSelected(index) },
+                tint = if (index == activeTool) TextPrimary else TextSecondary,
+                background =
+                    if (index == activeTool) SelectedItemBackground
+                    else Color.Transparent,
+                buttonSize = buttonSize,
+                iconSize = if (compact) 18.dp else 20.dp
+            )
+        }
+
+        ChromeIconButton(
+            icon =
+                if (isFullscreen) Icons.Outlined.FullscreenExit
+                else Icons.Outlined.Fullscreen,
+            contentDescription = "Toggle fullscreen viewer",
+            onClick = onToggleFullscreen,
+            buttonSize = buttonSize,
+            iconSize = if (compact) 18.dp else 20.dp
+        )
     }
 }

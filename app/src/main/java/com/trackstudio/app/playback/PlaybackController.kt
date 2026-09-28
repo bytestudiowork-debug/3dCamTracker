@@ -6,9 +6,46 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+/**
+ * What the playback clock needs from whoever owns the decoded frames.
+ */
+interface FrameSource {
+
+    /**
+     * Show [index] as soon as it is ready. Non-blocking; a newer request
+     * replaces an older one. Used for seeking and single-stepping.
+     */
+    fun requestFrame(index: Int)
+
+    /**
+     * Suspends until [index] is decoded AND on screen. Used by the
+     * playback clock so it never advances past a frame that has not been
+     * shown yet.
+     */
+    suspend fun presentFrame(index: Int)
+
+    /** Hint: playback is running forward from [fromIndex]; warm the cache. */
+    fun prefetchForward(fromIndex: Int)
+}
+
+/**
+ * Clock-driven playback over an image sequence.
+ *
+ * Design notes (this replaces the previous implementation, whose playback
+ * appeared frozen):
+ *
+ *  - The old clock fired a "load frame N" request every 1/fps seconds and
+ *    each request cancelled the previous decode. Whenever decoding a frame
+ *    took longer than one frame interval, *every* decode was superseded
+ *    before it finished, so no new image was ever displayed.
+ *  - Now the clock asks the [FrameSource] to present the next frame and
+ *    waits for it. If decoding is slower than real time, playback simply
+ *    runs slower (every frame is shown, none is dropped) instead of
+ *    freezing, and the clock re-syncs rather than bursting to catch up.
+ */
 class PlaybackController(
     private val scope: CoroutineScope,
-    private val onFrameChanged: (Int) -> Unit,
+    private val source: FrameSource,
     private val onPlayingChanged: (Boolean) -> Unit
 ) {
 
@@ -18,12 +55,21 @@ class PlaybackController(
     private var fps = 24.0
     private var currentFrame = 0
 
+    /** 1.0 = normal speed. */
+    var speed: Double = 1.0
+        set(value) {
+            field = value.coerceIn(0.05, 8.0)
+        }
+
+    val isPlaying: Boolean
+        get() = playbackJob?.isActive == true
+
     fun configure(
         frameCount: Int,
         fps: Double,
         currentFrame: Int = 0
     ) {
-        stop(notify = false)
+        stop()
 
         this.frameCount = frameCount.coerceAtLeast(0)
         this.fps = fps.coerceIn(1.0, 240.0)
@@ -34,88 +80,62 @@ class PlaybackController(
             } else {
                 0
             }
-
-        onPlayingChanged(false)
-        onFrameChanged(this.currentFrame)
     }
 
     fun play() {
-        if (frameCount <= 0) {
+        if (frameCount <= 0 || isPlaying) {
             return
         }
 
-        if (playbackJob?.isActive == true) {
-            return
-        }
-
-        /*
-         * If playback is at the last frame, start from frame 0.
-         */
+        // Restart from the beginning when play is pressed on the last frame.
         if (currentFrame >= frameCount - 1) {
             currentFrame = 0
-            onFrameChanged(currentFrame)
+            source.requestFrame(0)
         }
 
         onPlayingChanged(true)
 
         playbackJob = scope.launch {
 
-            val frameIntervalNanos =
-                (1_000_000_000.0 / fps)
-                    .toLong()
-                    .coerceAtLeast(1L)
-
             var nextFrameTime =
-                System.nanoTime() + frameIntervalNanos
+                System.nanoTime() + frameIntervalNanos()
 
             while (isActive) {
 
-                val remainingNanos =
-                    nextFrameTime - System.nanoTime()
+                source.prefetchForward(currentFrame)
 
-                if (remainingNanos > 0L) {
+                val waitMillis =
+                    (nextFrameTime - System.nanoTime()) / 1_000_000L
 
-                    val remainingMillis =
-                        remainingNanos / 1_000_000L
-
-                    if (remainingMillis > 0L) {
-                        delay(remainingMillis)
-                    }
-                }
-
-                if (!isActive) {
-                    break
+                if (waitMillis > 0L) {
+                    delay(waitMillis)
                 }
 
                 if (currentFrame >= frameCount - 1) {
-                    currentFrame = frameCount - 1
-                    onFrameChanged(currentFrame)
-                    stop()
                     break
                 }
 
-                currentFrame++
+                val target = currentFrame + 1
 
-                onFrameChanged(currentFrame)
+                // May suspend for a while if this frame is still decoding.
+                source.presentFrame(target)
 
-                /*
-                 * Keep playback timing independent of image decoding.
-                 */
-                nextFrameTime += frameIntervalNanos
+                currentFrame = target
 
-                /*
-                 * If we fall too far behind, resynchronize the clock.
-                 * This prevents a burst of frames after a slow decode.
-                 */
+                nextFrameTime += frameIntervalNanos()
+
+                // Running late (slow decode): resync instead of bursting.
                 val now = System.nanoTime()
-
-                if (
-                    nextFrameTime <
-                    now - frameIntervalNanos * 2L
-                ) {
-                    nextFrameTime =
-                        now + frameIntervalNanos
+                if (nextFrameTime < now) {
+                    nextFrameTime = now
                 }
+            }
+
+            // Reached the end (or was cancelled: the canceller already
+            // reported the state change).
+            if (isActive) {
+                playbackJob = null
+                onPlayingChanged(false)
             }
         }
     }
@@ -124,89 +144,45 @@ class PlaybackController(
         stop()
     }
 
-    fun stop() {
-        stop(notify = true)
-    }
-
-    private fun stop(notify: Boolean) {
+    private fun stop() {
+        val wasPlaying = isPlaying
 
         playbackJob?.cancel()
         playbackJob = null
 
-        if (notify) {
+        if (wasPlaying) {
             onPlayingChanged(false)
         }
     }
 
-    fun nextFrame() {
+    fun nextFrame() = jumpTo(currentFrame + 1)
+
+    fun previousFrame() = jumpTo(currentFrame - 1)
+
+    fun firstFrame() = jumpTo(0)
+
+    fun lastFrame() = jumpTo(frameCount - 1)
+
+    fun seekTo(frame: Int) = jumpTo(frame)
+
+    private fun jumpTo(frame: Int) {
         stop()
 
         if (frameCount <= 0) {
             return
         }
 
-        currentFrame =
-            (currentFrame + 1)
-                .coerceAtMost(frameCount - 1)
+        currentFrame = frame.coerceIn(0, frameCount - 1)
 
-        onFrameChanged(currentFrame)
-    }
-
-    fun previousFrame() {
-        stop()
-
-        if (frameCount <= 0) {
-            return
-        }
-
-        currentFrame =
-            (currentFrame - 1)
-                .coerceAtLeast(0)
-
-        onFrameChanged(currentFrame)
-    }
-
-    fun firstFrame() {
-        stop()
-
-        if (frameCount <= 0) {
-            return
-        }
-
-        currentFrame = 0
-
-        onFrameChanged(currentFrame)
-    }
-
-    fun lastFrame() {
-        stop()
-
-        if (frameCount <= 0) {
-            return
-        }
-
-        currentFrame = frameCount - 1
-
-        onFrameChanged(currentFrame)
-    }
-
-    fun seekTo(frame: Int) {
-        stop()
-
-        if (frameCount <= 0) {
-            return
-        }
-
-        currentFrame =
-            frame.coerceIn(
-                0,
-                frameCount - 1
-            )
-
-        onFrameChanged(currentFrame)
+        source.requestFrame(currentFrame)
     }
 
     fun release() {
         stop()
     }
+
+    private fun frameIntervalNanos(): Long =
+        (1_000_000_000.0 / (fps * speed))
+            .toLong()
+            .coerceAtLeast(1L)
 }

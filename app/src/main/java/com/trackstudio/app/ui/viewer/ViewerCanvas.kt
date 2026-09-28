@@ -18,6 +18,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -47,7 +48,9 @@ fun ViewerCanvas(
     modifier: Modifier = Modifier,
     requestedZoom: Float? = null,
     onZoomChanged: ((Float) -> Unit)? = null,
-    onImageCoordinateTap: ((x: Float, y: Float) -> Unit)? = null
+    onImageCoordinateTap: ((x: Float, y: Float) -> Unit)? = null,
+    backgroundColor: Color = PanelSurface,
+    showZoomLabel: Boolean = true
 ) {
     var containerSize by remember {
         mutableStateOf(IntSize.Zero)
@@ -92,7 +95,7 @@ fun ViewerCanvas(
 
     Box(
         modifier = modifier
-            .background(PanelSurface)
+            .background(backgroundColor)
             .onSizeChanged { size ->
 
                 containerSize = size
@@ -332,18 +335,20 @@ fun ViewerCanvas(
                         }
             )
 
-            Text(
-                text =
-                    "${(transform.zoom * 100f).toInt()}%",
+            if (showZoomLabel) {
+                Text(
+                    text =
+                        "${(transform.zoom * 100f).toInt()}%",
 
-                color =
-                    TextSecondary,
+                    color =
+                        TextSecondary,
 
-                modifier =
-                    Modifier.align(
-                        Alignment.TopEnd
-                    )
-            )
+                    modifier =
+                        Modifier.align(
+                            Alignment.TopEnd
+                        )
+                )
+            }
 
         } else if (isLoading) {
 

@@ -27,6 +27,7 @@ import com.trackstudio.app.data.model.ProjectSettings
 import com.trackstudio.app.data.repository.ProjectRepository
 import com.trackstudio.app.project.ProjectLoadResult
 import com.trackstudio.app.project.ProjectLoader
+import com.trackstudio.app.project.ViewerFrames
 import com.trackstudio.app.ui.common.DesktopButton
 import com.trackstudio.app.ui.home.HomeScreen
 import com.trackstudio.app.ui.newproject.NewProjectScreen
@@ -378,16 +379,30 @@ private fun TrackStudioApp() {
 
                 if (project != null) {
 
+                    /*
+                     * Remembered so the list keeps the same identity
+                     * across recompositions (the viewer reloads its
+                     * sequence whenever this list changes).
+                     */
+                    val viewerFrameUris =
+                        remember(
+                            project.id,
+                            project.footage.frameCount,
+                            project.proxy.enabled
+                        ) {
+                            ViewerFrames.resolve(
+                                appContext,
+                                project
+                            )
+                        }
+
                     ViewerScreen(
 
                         viewModel =
                             viewerViewModel,
 
                         frameUris =
-                            project.footage.frames
-                                .map { frame ->
-                                    frame.uri
-                                },
+                            viewerFrameUris,
 
                         fps =
                             project.frameRate,

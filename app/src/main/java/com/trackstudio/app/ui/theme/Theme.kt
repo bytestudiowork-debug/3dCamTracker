@@ -4,20 +4,22 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 
+// Dark-only, deliberately. This is a professional editing tool, not a
+// consumer app that should follow the system light/dark toggle - Resolve,
+// Nuke, Premiere all default to (and mostly only ship) a dark UI for the
+// same reason: color/luminance judgments on footage are easiest against a
+// neutral dark surround.
 private val TrackStudioColorScheme = darkColorScheme(
-    primary = AccentBlue,
-    onPrimary = TextPrimary,
-    primaryContainer = AccentBlueDim,
-    onPrimaryContainer = TextPrimary,
-    background = BgDeep,
+    primary = AccentPrimary,
+    onPrimary = androidx.compose.ui.graphics.Color.White,
+    background = PanelBackground,
     onBackground = TextPrimary,
-    surface = BgPanel,
+    surface = PanelSurface,
     onSurface = TextPrimary,
-    surfaceVariant = BgCard,
+    surfaceVariant = PanelSurfaceRaised,
     onSurfaceVariant = TextSecondary,
-    outline = DividerCol,
-    error = StatusRed,
-    onError = TextPrimary
+    outline = PanelBorder,
+    error = AccentError
 )
 
 @Composable
