@@ -1,5 +1,6 @@
 package com.trackstudio.app.ui.recentprojects
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.trackstudio.app.data.model.ProjectSettings
 import com.trackstudio.app.ui.common.DesktopButton
 import com.trackstudio.app.ui.common.Panel
+import com.trackstudio.app.ui.theme.BgDeep
 import com.trackstudio.app.ui.theme.TextSecondary
 import com.trackstudio.app.viewmodel.RecentProjectsViewModel
 
@@ -62,6 +64,7 @@ fun RecentProjectsScreen(
         modifier =
             Modifier
                 .fillMaxSize()
+                .background(BgDeep)
                 .padding(28.dp)
     ) {
 
