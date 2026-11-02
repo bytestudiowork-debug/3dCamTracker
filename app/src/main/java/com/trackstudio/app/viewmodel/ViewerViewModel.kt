@@ -259,6 +259,10 @@ class ViewerViewModel(
             throw e
         } catch (t: Throwable) {
             reportError(index, t)
+            throw IllegalStateException(
+                "Playback stopped because frame ${index + 1} could not be decoded.",
+                t
+            )
         }
     }
 
