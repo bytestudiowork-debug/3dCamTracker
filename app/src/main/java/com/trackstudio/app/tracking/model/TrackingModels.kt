@@ -85,7 +85,8 @@ data class TrackingQuality(
     val minimumFeatureDistance: Float = 12f,
     val opticalFlowWindow: Int = 21,
     val pyramidLevels: Int = 3,
-    val maximumTrackingError: Float = 24f
+    val maximumTrackingError: Float = 24f,
+    val maximumAnalysisDimension: Int = 1440
 ) {
     init {
         require(maxFeatures in 20..5000)
@@ -94,6 +95,43 @@ data class TrackingQuality(
         require(opticalFlowWindow in 7..51 && opticalFlowWindow % 2 == 1)
         require(pyramidLevels in 1..6)
         require(maximumTrackingError > 0f)
+        require(maximumAnalysisDimension in 480..4096)
+    }
+
+    companion object {
+        fun recommended(
+            maxHeapBytes: Long = Runtime.getRuntime().maxMemory(),
+            processorCount: Int = Runtime.getRuntime().availableProcessors()
+        ): TrackingQuality {
+            val heapMb = maxHeapBytes / (1024L * 1024L)
+            return when {
+                heapMb <= 256L || processorCount <= 4 ->
+                    TrackingQuality(
+                        maxFeatures = 250,
+                        minimumFeatureDistance = 16f,
+                        opticalFlowWindow = 15,
+                        pyramidLevels = 2,
+                        maximumTrackingError = 28f,
+                        maximumAnalysisDimension = 960
+                    )
+                heapMb <= 512L || processorCount <= 6 ->
+                    TrackingQuality(
+                        maxFeatures = 450,
+                        minimumFeatureDistance = 13f,
+                        opticalFlowWindow = 19,
+                        pyramidLevels = 3,
+                        maximumAnalysisDimension = 1440
+                    )
+                else ->
+                    TrackingQuality(
+                        maxFeatures = 800,
+                        minimumFeatureDistance = 10f,
+                        opticalFlowWindow = 21,
+                        pyramidLevels = 4,
+                        maximumAnalysisDimension = 1920
+                    )
+            }
+        }
     }
 }
 
