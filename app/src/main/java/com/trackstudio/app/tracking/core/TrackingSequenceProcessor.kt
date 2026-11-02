@@ -36,10 +36,19 @@ class TrackingSequenceProcessor(
     suspend fun trackAutomatic(
         startFrame: Int,
         endFrame: Int,
+        firstTrackId: Long,
         onProgress: (TrackingProgress) -> Unit = {}
     ): List<TrackPoint> {
         require(startFrame >= 0 && endFrame >= 0 && startFrame != endFrame)
-        return process(startFrame, endFrame, emptyList(), automatic = true, onProgress)
+        require(firstTrackId >= 0L)
+        return process(
+            startFrame,
+            endFrame,
+            emptyList(),
+            automatic = true,
+            firstTrackId = firstTrackId,
+            onProgress = onProgress
+        )
     }
 
     private suspend fun process(
@@ -47,6 +56,7 @@ class TrackingSequenceProcessor(
         endFrame: Int,
         initialTracks: List<TrackPoint>,
         automatic: Boolean,
+        firstTrackId: Long = 0L,
         onProgress: (TrackingProgress) -> Unit
     ): List<TrackPoint> = withContext(Dispatchers.Default) {
         val direction = if (endFrame > startFrame) 1 else -1
@@ -64,7 +74,7 @@ class TrackingSequenceProcessor(
                 val seeds = engine.detectAutomaticPoints(firstFrame)
                 tracks = seeds.mapIndexed { index, point ->
                     TrackPoint(
-                        id = index.toLong() + 1L,
+                        id = firstTrackId + index.toLong(),
                         label = "Auto ${index + 1}",
                         isManuallyCreated = false,
                         observations = listOf(
