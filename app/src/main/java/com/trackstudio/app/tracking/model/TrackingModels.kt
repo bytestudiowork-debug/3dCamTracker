@@ -47,6 +47,12 @@ data class TrackPoint(
         require(last == null || observation.frameIndex > last.frameIndex)
         return copy(observations = observations + observation)
     }
+
+    fun putObservation(observation: TrackObservation): TrackPoint {
+        val updated = observations.filterNot { it.frameIndex == observation.frameIndex } +
+            observation
+        return copy(observations = updated.sortedBy { it.frameIndex })
+    }
 }
 
 data class CameraIntrinsics(
