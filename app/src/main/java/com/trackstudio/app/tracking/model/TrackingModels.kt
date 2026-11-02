@@ -4,7 +4,11 @@ package com.trackstudio.app.tracking.model
 data class ImagePoint(
     val x: Float,
     val y: Float
-)
+) {
+    init {
+        require(x.isFinite() && y.isFinite())
+    }
+}
 
 enum class TrackStatus {
     ACTIVE,
@@ -64,8 +68,10 @@ data class CameraIntrinsics(
 ) {
     init {
         require(imageWidth > 0 && imageHeight > 0)
-        require(focalLengthPixelsX > 0f && focalLengthPixelsY > 0f)
-        require(pixelAspectRatio > 0f)
+        require(focalLengthPixelsX.isFinite() && focalLengthPixelsX > 0f)
+        require(focalLengthPixelsY.isFinite() && focalLengthPixelsY > 0f)
+        require(principalPointX.isFinite() && principalPointY.isFinite())
+        require(pixelAspectRatio.isFinite() && pixelAspectRatio > 0f)
     }
 }
 
@@ -75,7 +81,14 @@ data class LensDistortion(
     val radialK3: Float = 0f,
     val tangentialP1: Float = 0f,
     val tangentialP2: Float = 0f
-)
+) {
+    init {
+        require(
+            listOf(radialK1, radialK2, radialK3, tangentialP1, tangentialP2)
+                .all { it.isFinite() }
+        )
+    }
+}
 
 data class TrackingQuality(
     val maxFeatures: Int = 500,
@@ -150,6 +163,11 @@ data class TrackingProgress(
     val trackedPoints: Int,
     val lostPoints: Int
 ) {
+    init {
+        require(totalFrames >= 0 && completedFrames in 0..totalFrames)
+        require(trackedPoints >= 0 && lostPoints >= 0)
+    }
+
     val fraction: Float
         get() = if (totalFrames <= 0) 0f else
             (completedFrames.toFloat() / totalFrames).coerceIn(0f, 1f)
