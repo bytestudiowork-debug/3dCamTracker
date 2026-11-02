@@ -197,7 +197,7 @@ Java_com_trackstudio_app_tracking_nativebridge_TrackingNative_nativeTrackPoints(
     }
 
     const jsize valueCount = env->GetArrayLength(pointArray);
-    if (valueCount % 2 != 0) return env->NewFloatArray(0);
+    if (valueCount % 2 != 0 || valueCount > 20000) return env->NewFloatArray(0);
     std::vector<float> input(static_cast<size_t>(valueCount));
     env->GetFloatArrayRegion(pointArray, 0, valueCount, input.data());
 
