@@ -7,13 +7,10 @@ import com.trackstudio.app.tracking.model.TrackPoint
 import com.trackstudio.app.tracking.model.TrackStatus
 import com.trackstudio.app.tracking.model.TrackingQuality
 import com.trackstudio.app.tracking.nativebridge.TrackingNative
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
-import kotlin.math.max
-import kotlin.math.min
 
 data class TrackedPointResult(
     val source: ImagePoint,
@@ -49,28 +46,55 @@ class TrackingEngine(
     suspend fun trackManualPoints(
         previousFrame: Bitmap,
         currentFrame: Bitmap,
-        points: List<ImagePoint>
-    ): TrackingFrameResult = trackPoints(previousFrame, currentFrame, points)
+        points: List<ImagePoint>,
+        targetFrameIndex: Int
+    ): TrackingFrameResult =
+        trackPoints(previousFrame, currentFrame, points, targetFrameIndex)
 
     suspend fun trackAutomaticPoints(
         previousFrame: Bitmap,
         currentFrame: Bitmap,
-        points: List<ImagePoint>
-    ): TrackingFrameResult = trackPoints(previousFrame, currentFrame, points)
+        points: List<ImagePoint>,
+        targetFrameIndex: Int
+    ): TrackingFrameResult {
+        val forward = trackPoints(previousFrame, currentFrame, points, targetFrameIndex)
+        coroutineContext.ensureActive()
+        val validIndices = forward.points.indices.filter { forward.points[it].isValid }
+        if (validIndices.isEmpty()) return forward
+
+        val reverseInput = validIndices.map { forward.points[it].position }
+        val reverse = trackPoints(currentFrame, previousFrame, reverseInput, targetFrameIndex - 1)
+        val tolerance = maxOf(1.5f, quality.opticalFlowWindow * 0.15f)
+        val checked = forward.points.toMutableList()
+
+        validIndices.forEachIndexed { reverseIndex, forwardIndex ->
+            val back = reverse.points[reverseIndex]
+            val original = forward.points[forwardIndex].source
+            val dx = back.position.x - original.x
+            val dy = back.position.y - original.y
+            val consistent = back.isValid && dx * dx + dy * dy <= tolerance * tolerance
+            if (!consistent) {
+                checked[forwardIndex] = checked[forwardIndex].copy(isValid = false)
+            }
+        }
+        return forward.copy(points = checked)
+    }
 
     private suspend fun trackPoints(
         previousFrame: Bitmap,
         currentFrame: Bitmap,
-        points: List<ImagePoint>
+        points: List<ImagePoint>,
+        targetFrameIndex: Int
     ): TrackingFrameResult = withContext(Dispatchers.Default) {
         coroutineContext.ensureActive()
+        require(targetFrameIndex >= 0) { "Target frame index cannot be negative." }
         requireUsableFrame(previousFrame)
         requireUsableFrame(currentFrame)
         require(previousFrame.width == currentFrame.width &&
             previousFrame.height == currentFrame.height) {
             "Tracking frames must have matching dimensions."
         }
-        if (points.isEmpty()) return@withContext TrackingFrameResult(0, emptyList())
+        if (points.isEmpty()) return@withContext TrackingFrameResult(targetFrameIndex, emptyList())
 
         val coordinates = FloatArray(points.size * 2)
         points.forEachIndexed { index, point ->
@@ -100,7 +124,7 @@ class TrackingEngine(
                 isValid = valid
             )
         }
-        TrackingFrameResult(0, results)
+        TrackingFrameResult(targetFrameIndex, results)
     }
 
     fun appendTrackedObservations(
