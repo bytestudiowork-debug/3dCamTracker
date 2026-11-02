@@ -29,8 +29,11 @@ data class TrackingFrameResult(
 )
 
 class TrackingEngine(
-    private val quality: TrackingQuality = TrackingQuality()
+    private val quality: TrackingQuality = TrackingQuality.recommended()
 ) {
+    val maximumAnalysisDimension: Int
+        get() = quality.maximumAnalysisDimension
+
     suspend fun detectAutomaticPoints(frame: Bitmap): List<ImagePoint> =
         withContext(Dispatchers.Default) {
             coroutineContext.ensureActive()
@@ -134,7 +137,7 @@ class TrackingEngine(
     ): List<TrackPoint> {
         require(tracks.size == results.size)
         return tracks.zip(results).map { (track, result) ->
-            track.append(
+            track.putObservation(
                 TrackObservation(
                     frameIndex = frameIndex,
                     point = result.position,
