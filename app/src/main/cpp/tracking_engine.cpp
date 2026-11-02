@@ -159,20 +159,43 @@ Java_com_trackstudio_app_tracking_nativebridge_TrackingNative_nativeDetectFeatur
     std::vector<float> selected;
     selected.reserve(static_cast<size_t>(std::max(0, maxFeatures)) * 2);
     const float minDistanceSquared = minimumDistance * minimumDistance;
+    const int cellSize = std::max(1, static_cast<int>(minimumDistance));
+    const int gridColumns = (image.width + cellSize - 1) / cellSize;
+    const int gridRows = (image.height + cellSize - 1) / cellSize;
+    std::vector<std::vector<int>> spatialGrid(
+        static_cast<size_t>(gridColumns) * gridRows);
+
     for (const Corner &corner : corners) {
+        const int cellX = corner.x / cellSize;
+        const int cellY = corner.y / cellSize;
         bool separated = true;
-        for (size_t i = 0; i < selected.size(); i += 2) {
-            const float dx = selected[i] - corner.x;
-            const float dy = selected[i + 1] - corner.y;
-            if (dx * dx + dy * dy < minDistanceSquared) {
-                separated = false;
-                break;
+
+        for (int gy = std::max(0, cellY - 1);
+             gy <= std::min(gridRows - 1, cellY + 1) && separated; ++gy) {
+            for (int gx = std::max(0, cellX - 1);
+                 gx <= std::min(gridColumns - 1, cellX + 1); ++gx) {
+                const auto &nearby = spatialGrid[
+                    static_cast<size_t>(gy) * gridColumns + gx];
+                for (int selectedIndex : nearby) {
+                    const size_t offset = static_cast<size_t>(selectedIndex) * 2;
+                    const float dx = selected[offset] - corner.x;
+                    const float dy = selected[offset + 1] - corner.y;
+                    if (dx * dx + dy * dy < minDistanceSquared) {
+                        separated = false;
+                        break;
+                    }
+                }
+                if (!separated) break;
             }
         }
+
         if (separated) {
+            const int selectedIndex = static_cast<int>(selected.size() / 2);
             selected.push_back(static_cast<float>(corner.x));
             selected.push_back(static_cast<float>(corner.y));
-            if (static_cast<int>(selected.size() / 2) >= maxFeatures) break;
+            spatialGrid[static_cast<size_t>(cellY) * gridColumns + cellX]
+                .push_back(selectedIndex);
+            if (selectedIndex + 1 >= maxFeatures) break;
         }
     }
 
