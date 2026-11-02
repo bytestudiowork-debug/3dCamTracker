@@ -118,11 +118,12 @@ class TrackingEngine(
             val x = native.getOrElse(offset) { source.x }
             val y = native.getOrElse(offset + 1) { source.y }
             val error = native.getOrElse(offset + 2) { Float.POSITIVE_INFINITY }
+            val finitePosition = x.isFinite() && y.isFinite()
             val valid = native.getOrElse(offset + 3) { 0f } > 0.5f &&
-                error.isFinite() && error <= quality.maximumTrackingError
+                finitePosition && error.isFinite() && error <= quality.maximumTrackingError
             TrackedPointResult(
                 source = source,
-                position = ImagePoint(x, y),
+                position = if (finitePosition) ImagePoint(x, y) else source,
                 error = error,
                 isValid = valid
             )
