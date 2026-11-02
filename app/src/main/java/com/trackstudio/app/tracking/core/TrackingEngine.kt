@@ -140,7 +140,7 @@ class TrackingEngine(
             track.putObservation(
                 TrackObservation(
                     frameIndex = frameIndex,
-                    point = result.position,
+                    point = if (result.isValid) result.position else result.source,
                     confidence = result.confidence,
                     status = if (result.isValid) TrackStatus.ACTIVE else TrackStatus.LOST
                 )
@@ -152,6 +152,9 @@ class TrackingEngine(
         require(!bitmap.isRecycled) { "Tracking frame has already been released." }
         require(bitmap.width >= 16 && bitmap.height >= 16) {
             "Tracking frame is too small."
+        }
+        require(maxOf(bitmap.width, bitmap.height) <= quality.maximumAnalysisDimension) {
+            "Tracking frame exceeds the selected device analysis resolution."
         }
         require(bitmap.config == Bitmap.Config.ARGB_8888 ||
             bitmap.config == Bitmap.Config.RGB_565) {
