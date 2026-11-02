@@ -12,7 +12,7 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
 
 interface TrackingFrameProvider {
-    suspend fun loadFrame(index: Int): Bitmap
+    suspend fun loadFrame(index: Int, maximumDimension: Int): Bitmap
     fun releaseFrame(bitmap: Bitmap)
 }
 
@@ -57,7 +57,7 @@ class TrackingSequenceProcessor(
 
         try {
             coroutineContext.ensureActive()
-            val firstFrame = frames.loadFrame(startFrame)
+            val firstFrame = frames.loadFrame(startFrame, engine.maximumAnalysisDimension)
             previous = firstFrame
 
             if (automatic) {
@@ -88,7 +88,7 @@ class TrackingSequenceProcessor(
                 coroutineContext.ensureActive()
                 val nextIndex = frameIndex + direction
                 val previousFrame = previous ?: error("Previous tracking frame is unavailable.")
-                val nextFrame = frames.loadFrame(nextIndex)
+                val nextFrame = frames.loadFrame(nextIndex, engine.maximumAnalysisDimension)
                 current = nextFrame
 
                 val activeTracks = tracks.filter {
@@ -107,7 +107,7 @@ class TrackingSequenceProcessor(
                     val observation = TrackObservation(
                         frameIndex = nextIndex,
                         point = if (tracked.isValid) tracked.position
-                            else track.observations.last().point,
+                            else track.observationAt(frameIndex)!!.point,
                         confidence = tracked.confidence,
                         status = if (tracked.isValid) TrackStatus.ACTIVE else TrackStatus.LOST
                     )
