@@ -30,7 +30,7 @@ class TrackingSequenceProcessor(
         require(tracks.all { it.observationAt(startFrame) != null }) {
             "Every manual track must have a point on the starting frame."
         }
-        return process(startFrame, endFrame, tracks, automatic = false, onProgress)
+        return process(startFrame, endFrame, tracks, automatic = false, onProgress = onProgress)
     }
 
     suspend fun trackAutomatic(
@@ -72,6 +72,9 @@ class TrackingSequenceProcessor(
 
             if (automatic) {
                 val seeds = engine.detectAutomaticPoints(firstFrame)
+                require(seeds.size.toLong() <= Long.MAX_VALUE - firstTrackId) {
+                    "Automatic track ID range is exhausted."
+                }
                 tracks = seeds.mapIndexed { index, point ->
                     TrackPoint(
                         id = firstTrackId + index.toLong(),
