@@ -63,7 +63,7 @@ class TrackingEngine(
         if (validIndices.isEmpty()) return forward
 
         val reverseInput = validIndices.map { forward.points[it].position }
-        val reverse = trackPoints(currentFrame, previousFrame, reverseInput, targetFrameIndex - 1)
+        val reverse = trackPoints(currentFrame, previousFrame, reverseInput, targetFrameIndex)
         val tolerance = maxOf(1.5f, quality.opticalFlowWindow * 0.15f)
         val checked = forward.points.toMutableList()
 
