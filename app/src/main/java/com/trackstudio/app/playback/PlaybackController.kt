@@ -7,6 +7,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import kotlin.coroutines.coroutineContext
 import kotlin.math.ceil
 
@@ -107,9 +108,10 @@ class PlaybackController(
 
     private fun stop() {
         val job = playbackJob
+        val wasActive = job?.isActive == true
         playbackJob = null
         job?.cancel()
-        if (job?.isActive == true) onPlayingChanged(false)
+        if (wasActive) onPlayingChanged(false)
     }
 
     fun nextFrame() = jumpTo(currentFrame + 1)
