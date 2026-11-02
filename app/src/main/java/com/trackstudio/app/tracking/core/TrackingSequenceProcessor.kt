@@ -113,7 +113,23 @@ class TrackingSequenceProcessor(
                     )
                     track.id to track.putObservation(observation)
                 }
-                tracks = tracks.map { updatedById[it.id] ?: it }
+                tracks = tracks.map { track ->
+                    updatedById[track.id] ?: run {
+                        val previousObservation = track.observationAt(frameIndex)
+                        if (previousObservation?.status == TrackStatus.LOST) {
+                            track.putObservation(
+                                TrackObservation(
+                                    frameIndex = nextIndex,
+                                    point = previousObservation.point,
+                                    confidence = 0f,
+                                    status = TrackStatus.LOST
+                                )
+                            )
+                        } else {
+                            track
+                        }
+                    }
+                }
 
                 frames.releaseFrame(previousFrame)
                 previous = nextFrame
