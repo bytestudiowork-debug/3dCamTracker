@@ -7,6 +7,7 @@
 #include <cstring>
 #include <limits>
 #include <vector>
+#include <utility>
 
 #define TRACK_LOG_TAG "TrackStudioTracking"
 #define TRACK_LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TRACK_LOG_TAG, __VA_ARGS__)
