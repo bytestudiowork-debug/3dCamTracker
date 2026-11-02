@@ -1,7 +1,5 @@
 package com.trackstudio.app.tracking.model
 
-import kotlin.math.max
-import kotlin.math.min
 
 data class ImagePoint(
     val x: Float,
