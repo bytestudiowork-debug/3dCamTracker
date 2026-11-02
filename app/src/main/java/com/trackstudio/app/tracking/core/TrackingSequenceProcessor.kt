@@ -1,7 +1,6 @@
 package com.trackstudio.app.tracking.core
 
 import android.graphics.Bitmap
-import com.trackstudio.app.tracking.model.ImagePoint
 import com.trackstudio.app.tracking.model.TrackObservation
 import com.trackstudio.app.tracking.model.TrackPoint
 import com.trackstudio.app.tracking.model.TrackStatus
@@ -58,10 +57,11 @@ class TrackingSequenceProcessor(
 
         try {
             coroutineContext.ensureActive()
-            previous = frames.loadFrame(startFrame)
+            val firstFrame = frames.loadFrame(startFrame)
+            previous = firstFrame
 
             if (automatic) {
-                val seeds = engine.detectAutomaticPoints(previous)
+                val seeds = engine.detectAutomaticPoints(firstFrame)
                 tracks = seeds.mapIndexed { index, point ->
                     TrackPoint(
                         id = index.toLong() + 1L,
@@ -87,19 +87,19 @@ class TrackingSequenceProcessor(
             while (frameIndex != endFrame) {
                 coroutineContext.ensureActive()
                 val nextIndex = frameIndex + direction
-                current = frames.loadFrame(nextIndex)
+                val previousFrame = previous ?: error("Previous tracking frame is unavailable.")
+                val nextFrame = frames.loadFrame(nextIndex)
+                current = nextFrame
 
                 val activeTracks = tracks.filter {
-                    it.observations.lastOrNull()?.status == TrackStatus.ACTIVE
+                    it.observationAt(frameIndex)?.status == TrackStatus.ACTIVE
                 }
-                val points = activeTracks.mapNotNull {
-                    it.observationAt(frameIndex)?.point
-                }
+                val points = activeTracks.map { it.observationAt(frameIndex)!!.point }
 
                 val result = if (automatic) {
-                    engine.trackAutomaticPoints(previous, current, points, nextIndex)
+                    engine.trackAutomaticPoints(previousFrame, nextFrame, points, nextIndex)
                 } else {
-                    engine.trackManualPoints(previous, current, points, nextIndex)
+                    engine.trackManualPoints(previousFrame, nextFrame, points, nextIndex)
                 }
 
                 val updates = activeTracks.zip(result.points)
@@ -115,8 +115,8 @@ class TrackingSequenceProcessor(
                 }
                 tracks = tracks.map { updatedById[it.id] ?: it }
 
-                frames.releaseFrame(previous)
-                previous = current
+                frames.releaseFrame(previousFrame)
+                previous = nextFrame
                 current = null
                 frameIndex = nextIndex
 
@@ -125,10 +125,10 @@ class TrackingSequenceProcessor(
                         completedFrames = kotlin.math.abs(frameIndex - startFrame),
                         totalFrames = totalFrames,
                         trackedPoints = tracks.count {
-                            it.observations.lastOrNull()?.status == TrackStatus.ACTIVE
+                            it.observationAt(frameIndex)?.status == TrackStatus.ACTIVE
                         },
                         lostPoints = tracks.count {
-                            it.observations.lastOrNull()?.status == TrackStatus.LOST
+                            it.observationAt(frameIndex)?.status == TrackStatus.LOST
                         }
                     )
                 )
