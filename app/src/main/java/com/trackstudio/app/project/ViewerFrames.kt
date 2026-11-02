@@ -36,26 +36,20 @@ object ViewerFrames {
                 project.proxy.cacheSubdir
             )
 
-        val names = dir.list() ?: return originals
-
-        val proxyCount =
-            names.count { it.startsWith("proxy_") && it.endsWith(".jpg") }
-
-        if (proxyCount < frames.size) {
-            return originals
-        }
+        if (!dir.isDirectory) return originals
 
         fun proxyFile(index: Int) =
             File(dir, "proxy_%05d.jpg".format(index))
 
-        // Cheap spot check that the naming lines up with this frame list.
-        if (
-            !proxyFile(frames.first().index).exists() ||
-            !proxyFile(frames.last().index).exists()
-        ) {
-            return originals
+        // Resolve each frame independently: interrupted proxy generation must
+        // not make playback fail because one middle frame is missing.
+        return frames.map { frame ->
+            val proxy = proxyFile(frame.index)
+            if (proxy.isFile && proxy.length() > 0L) {
+                Uri.fromFile(proxy)
+            } else {
+                frame.uri
+            }
         }
-
-        return frames.map { Uri.fromFile(proxyFile(it.index)) }
     }
 }
