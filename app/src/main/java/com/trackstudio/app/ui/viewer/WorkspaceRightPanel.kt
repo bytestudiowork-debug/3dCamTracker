@@ -16,6 +16,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
@@ -27,6 +29,8 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.ScatterPlot
 import androidx.compose.material.icons.outlined.ViewInAr
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -199,47 +203,91 @@ private fun ProjectDetailRow(label: String, value: String) {
 
 @Composable
 private fun TrackingToolsCard() {
+    var tracking by remember { mutableStateOf(false) }
+    var trackType by remember { mutableStateOf("Point Tracker") }
+    var searchArea by remember { mutableStateOf("Auto") }
+    var sensitivity by remember { mutableFloatStateOf(0.75f) }
+    var trackDataExpanded by remember { mutableStateOf(false) }
+
     PanelCard(modifier = Modifier.fillMaxWidth()) {
-
-        CollapsibleSection(
-            icon = Icons.Outlined.Build,
-            title = "Tracking Tools",
-            titleSize = 16
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                ChromeButton(
-                    text = "Auto Track",
-                    icon = Icons.Outlined.GpsFixed,
-                    filled = true,
-                    onClick = { },
-                    modifier = Modifier.weight(1f)
-                )
-
-                ChromeButton(
-                    text = "Manual Track",
-                    icon = Icons.Outlined.Edit,
-                    onClick = { },
-                    modifier = Modifier.weight(1f)
-                )
-            }
+            ChromeButton(
+                text = if (tracking) "Tracking..." else "Start Tracking",
+                icon = Icons.Filled.PlayArrow,
+                filled = true,
+                onClick = { tracking = true },
+                modifier = Modifier.fillMaxWidth(),
+                height = 48.dp
+            )
+            ChromeButton(
+                text = "Stop Tracking",
+                icon = Icons.Filled.Stop,
+                onClick = { tracking = false },
+                modifier = Modifier.fillMaxWidth(),
+                height = 48.dp
+            )
         }
 
         SectionDivider()
-
-        TrackSettingsSection()
-
+        CollapsibleSection(title = "Track Options", titleSize = 16) {
+            Text("Track Type", color = TextSecondary, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 14.dp))
+            TrackingOptionSelector(trackType, listOf("Point Tracker", "Planar Tracker", "Object Tracker")) { trackType = it }
+            Text("Search Area", color = TextSecondary, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 14.dp))
+            TrackingOptionSelector(searchArea, listOf("Auto", "Small", "Medium", "Large")) { searchArea = it }
+            Column(modifier = Modifier.padding(horizontal = 14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Sensitivity", color = TextSecondary, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    Text("${(sensitivity * 100).roundToInt()}%", color = TextPrimary, fontSize = 12.sp)
+                }
+                ThinSlider(value = sensitivity, onValueChange = { sensitivity = it }, modifier = Modifier.fillMaxWidth())
+            }
+        }
         SectionDivider()
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable { trackDataExpanded = !trackDataExpanded }
+                .padding(horizontal = 14.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Outlined.ScatterPlot, contentDescription = null, tint = AccentPrimary, modifier = Modifier.size(19.dp))
+            Text("Track Data", color = TextPrimary, fontSize = 14.sp, modifier = Modifier.weight(1f).padding(start = 10.dp))
+            Icon(if (trackDataExpanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown, contentDescription = null, tint = TextSecondary)
+        }
+        if (trackDataExpanded) {
+            PointCountRow("Active Points", 0, AccentSuccess)
+            PointCountRow("Lost Points", 0, AccentError)
+            PointCountRow("Total Points", 0, AccentPrimary)
+        }
+    }
+}
 
-        ReconstructionSection()
-
-        SectionDivider()
-
-        TrackPointsSection()
+@Composable
+private fun TrackingOptionSelector(
+    selected: String,
+    options: List<String>,
+    onSelected: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier = Modifier.padding(horizontal = 10.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+                .background(PanelSurfaceRaised).clickable { expanded = true }
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(selected, color = TextPrimary, fontSize = 13.sp, modifier = Modifier.weight(1f))
+            Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = null, tint = TextSecondary)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option) },
+                    onClick = { onSelected(option); expanded = false }
+                )
+            }
+        }
     }
 }
 
