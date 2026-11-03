@@ -94,7 +94,6 @@ fun ViewerScreen(
     }
 
     var zoom by remember { mutableFloatStateOf(1f) }
-    var sidebarSelection by remember { mutableStateOf("Home") }
     var fullscreen by remember { mutableStateOf(false) }
     var panelOpen by remember { mutableStateOf(false) }
 
@@ -114,10 +113,9 @@ fun ViewerScreen(
         val windowWidth = maxWidth
         val windowHeight = maxHeight
         val compactHeight = windowHeight < 460.dp
-        val sidebarMode =
-            if (windowWidth >= 1600.dp) SidebarMode.FULL else SidebarMode.RAIL
         val inlinePanel = windowWidth >= 840.dp
-        val panelWidth = if (windowWidth >= 1100.dp) 320.dp else 280.dp
+        val panelWidth = if (windowWidth >= 1200.dp) 320.dp else 280.dp
+        val drawerWidth = minOf(320.dp, windowWidth * 0.88f)
         val gap = if (compactHeight) 8.dp else 12.dp
 
         Column(Modifier.fillMaxSize()) {
@@ -132,27 +130,19 @@ fun ViewerScreen(
                 )
             }
 
-            Row(
+            Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
             ) {
-                if (!fullscreen) {
-                    WorkspaceSidebar(
-                        mode = sidebarMode,
-                        selected = sidebarSelection,
-                        onSelect = { sidebarSelection = it }
-                    )
-                }
-
-                Column(
+                Row(
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .padding(if (fullscreen) 0.dp else gap),
-                    verticalArrangement =
-                        if (fullscreen) Arrangement.Top
-                        else Arrangement.spacedBy(gap)
+                        .fillMaxSize()
+                        .padding(
+                            horizontal = if (fullscreen) 0.dp else gap,
+                            vertical = if (fullscreen) 0.dp else gap
+                        ),
+                    horizontalArrangement = Arrangement.spacedBy(gap)
                 ) {
                     ViewerPanel(
                         bitmap = state.currentBitmap,
@@ -165,61 +155,63 @@ fun ViewerScreen(
                         onToggleFullscreen = { fullscreen = !fullscreen },
                         modifier = Modifier
                             .weight(1f)
-                            .fillMaxWidth()
+                            .fillMaxHeight()
                     )
 
-                    PlaybackPanel(
-                        state = state,
-                        poster = timelinePoster ?: state.currentBitmap,
-                        compact = compactHeight,
-                        isFullscreen = fullscreen,
-                        onToggleFullscreen = { fullscreen = !fullscreen },
-                        onPlayPause = viewModel::playPause,
-                        onFirstFrame = viewModel::firstFrame,
-                        onLastFrame = viewModel::lastFrame,
-                        onSeek = viewModel::seekTo,
-                        onSpeedChanged = viewModel::setPlaybackSpeed
-                    )
+                    if (inlinePanel && !fullscreen) {
+                        WorkspaceRightPanel(
+                            projectName = projectName,
+                            fps = state.playback.fps,
+                            frameCount = state.playback.frameCount,
+                            modifier = Modifier
+                                .width(panelWidth)
+                                .fillMaxHeight()
+                        )
+                    }
                 }
 
-                if (inlinePanel && !fullscreen) {
+                if (panelOpen && !inlinePanel && !fullscreen) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color(0x99000000))
+                            .pointerInput(Unit) {
+                                detectTapGestures { panelOpen = false }
+                            }
+                    )
+
                     WorkspaceRightPanel(
                         projectName = projectName,
                         fps = state.playback.fps,
                         frameCount = state.playback.frameCount,
                         modifier = Modifier
-                            .width(panelWidth)
+                            .align(Alignment.CenterEnd)
+                            .width(drawerWidth)
                             .fillMaxHeight()
-                            .padding(
-                                top = gap,
-                                end = gap,
-                                bottom = gap
-                            )
+                            .background(PanelBackground)
+                            .padding(8.dp)
                     )
                 }
             }
-        }
 
-        if (panelOpen && !inlinePanel && !fullscreen) {
-            Box(
+            PlaybackPanel(
+                state = state,
+                poster = timelinePoster ?: state.currentBitmap,
+                compact = compactHeight,
+                isFullscreen = fullscreen,
+                onToggleFullscreen = { fullscreen = !fullscreen },
+                onPlayPause = viewModel::playPause,
+                onFirstFrame = viewModel::firstFrame,
+                onLastFrame = viewModel::lastFrame,
+                onSeek = viewModel::seekTo,
+                onSpeedChanged = viewModel::setPlaybackSpeed,
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0x99000000))
-                    .pointerInput(Unit) {
-                        detectTapGestures { panelOpen = false }
-                    }
-            )
-
-            WorkspaceRightPanel(
-                projectName = projectName,
-                fps = state.playback.fps,
-                frameCount = state.playback.frameCount,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .width(280.dp)
-                    .fillMaxHeight()
-                    .background(PanelBackground)
-                    .padding(10.dp)
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = if (fullscreen) 0.dp else gap,
+                        top = if (fullscreen) 0.dp else gap,
+                        bottom = if (fullscreen) 0.dp else gap
+                    )
             )
         }
     }

@@ -51,8 +51,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.trackstudio.app.ui.theme.AccentPrimary
@@ -111,7 +114,12 @@ fun WorkspaceTopBar(
 
         if (showTitle) {
             Text(
-                text = "TrackStudio",
+                text = buildAnnotatedString {
+                    append("Track")
+                    withStyle(SpanStyle(color = AccentPrimary)) {
+                        append("Studio")
+                    }
+                },
                 color = TextPrimary,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
