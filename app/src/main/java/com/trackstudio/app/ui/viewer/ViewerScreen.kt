@@ -152,7 +152,7 @@ fun ViewerScreen(
                         trackingProgress = state.trackingProgress,
                         trackingError = state.trackingError,
                         onAddPoint = {},
-                        onImageTap = {},
+                        onImageTap = { _, _ -> },
                         onTrackToEnd = {},
                         onAutoTrack = viewModel::detectAndTrackToEnd,
                         onCancelTracking = viewModel::cancelTracking,
