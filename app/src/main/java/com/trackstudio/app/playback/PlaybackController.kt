@@ -1,10 +1,14 @@
 package com.trackstudio.app.playback
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
+import kotlin.coroutines.coroutineContext
 import kotlin.math.ceil
 
 interface FrameSource {
@@ -14,11 +18,11 @@ interface FrameSource {
 }
 
 /**
- * Real-time playback clock over an image sequence.
+ * Real-time playback clock for an image sequence.
  *
- * Timing uses a monotonic clock and the selected playback speed.
- * Frames are presented before the playhead advances, so slow decoding
- * cannot create a burst of frames or a permanently fast clock.
+ * A frame is presented before the playhead advances. Deadlines use a
+ * monotonic clock, and missed deadlines are resynchronized instead of
+ * producing catch-up bursts.
  */
 class PlaybackController(
     private val scope: CoroutineScope,
@@ -45,62 +49,69 @@ class PlaybackController(
     ) {
         stop()
         this.frameCount = frameCount.coerceAtLeast(0)
-        this.fps = fps.coerceIn(1.0, 240.0)
-        this.speed = speed.coerceIn(0.25, 2.0)
+        this.fps = fps.takeIf { it.isFinite() }?.coerceIn(1.0, 240.0) ?: 24.0
+        this.speed = speed.takeIf { it.isFinite() }?.coerceIn(0.25, 2.0) ?: 1.0
         this.currentFrame =
             if (this.frameCount > 0) currentFrame.coerceIn(0, this.frameCount - 1) else 0
     }
 
     fun setSpeed(value: Double) {
-        speed = value.coerceIn(0.25, 2.0)
+        if (value.isFinite()) speed = value.coerceIn(0.25, 2.0)
     }
 
     fun play() {
         if (frameCount <= 0 || isPlaying) return
 
-        if (currentFrame >= frameCount - 1) {
-            currentFrame = 0
-            source.requestFrame(0)
-        }
+        val startFrame = if (currentFrame >= frameCount - 1) 0 else currentFrame
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            try {
+                if (startFrame != currentFrame) currentFrame = startFrame
+                source.presentFrame(startFrame)
 
-        onPlayingChanged(true)
+                var nextDeadline = System.nanoTime() + frameIntervalNanos()
 
-        playbackJob = scope.launch {
-            var nextFrameDeadline = System.nanoTime() + frameIntervalNanos()
+                while (coroutineContext.isActive && currentFrame < frameCount - 1) {
+                    source.prefetchForward(currentFrame)
+                    waitUntil(nextDeadline)
+                    if (!coroutineContext.isActive) break
 
-            while (isActive && currentFrame < frameCount - 1) {
-                source.prefetchForward(currentFrame)
-                waitUntil(nextFrameDeadline)
+                    val target = currentFrame + 1
+                    source.presentFrame(target)
+                    currentFrame = target
 
-                if (!isActive || currentFrame >= frameCount - 1) break
+                    val interval = frameIntervalNanos()
+                    nextDeadline += interval
 
-                val target = currentFrame + 1
-                source.presentFrame(target)
-                currentFrame = target
-
-                val interval = frameIntervalNanos()
-                nextFrameDeadline += interval
-
-                val now = System.nanoTime()
-                if (nextFrameDeadline <= now) {
-                    nextFrameDeadline = now + interval
+                    val now = System.nanoTime()
+                    if (nextDeadline <= now) {
+                        nextDeadline = now + interval
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                // FrameSource reports decoding errors to the viewer state.
+            } finally {
+                if (playbackJob === coroutineContext[Job]) {
+                    playbackJob = null
+                    onPlayingChanged(false)
                 }
             }
-
-            if (isActive) {
-                playbackJob = null
-                onPlayingChanged(false)
-            }
         }
+
+        playbackJob = job
+        onPlayingChanged(true)
+        job.start()
     }
 
     fun pause() = stop()
 
     private fun stop() {
-        val wasPlaying = isPlaying
-        playbackJob?.cancel()
+        val job = playbackJob
+        val wasActive = job?.isActive == true
         playbackJob = null
-        if (wasPlaying) onPlayingChanged(false)
+        job?.cancel()
+        if (wasActive) onPlayingChanged(false)
     }
 
     fun nextFrame() = jumpTo(currentFrame + 1)
@@ -119,7 +130,7 @@ class PlaybackController(
     fun release() = stop()
 
     private suspend fun waitUntil(deadlineNanos: Long) {
-        while (true) {
+        while (coroutineContext.isActive) {
             val remainingNanos = deadlineNanos - System.nanoTime()
             if (remainingNanos <= 0L) return
 

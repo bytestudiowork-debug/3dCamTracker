@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Brush
+import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.GridOn
 import androidx.compose.material.icons.outlined.HelpOutline
@@ -93,7 +94,7 @@ fun WorkspaceTopBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
 
-        // Logo
+        // App identity and active project.
         Box(
             modifier = Modifier
                 .size(if (compact) 30.dp else 36.dp)
@@ -109,48 +110,41 @@ fun WorkspaceTopBar(
             )
         }
 
-        if (showTitle) {
-            Text(
-                text = "3D Camera Tracker",
-                color = TextPrimary,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                modifier = Modifier.padding(start = 12.dp)
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .padding(horizontal = if (compact) 10.dp else 16.dp)
-                .width(1.dp)
-                .height(28.dp)
-                .background(PanelBorder)
-        )
-
-        // Project selector (placeholder: shows the open project's name).
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .clickable { }
-                .padding(horizontal = 6.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.padding(start = 10.dp),
+            verticalArrangement = Arrangement.Center
         ) {
-            Text(
-                text = projectName.ifBlank { "Untitled Project" },
-                color = TextPrimary,
-                fontSize = 14.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = if (compact) 120.dp else 200.dp)
-            )
-
-            Icon(
-                imageVector = Icons.Outlined.KeyboardArrowDown,
-                contentDescription = null,
-                tint = TextSecondary,
-                modifier = Modifier.size(20.dp)
-            )
+            if (showTitle) {
+                Text(
+                    text = "3D Camera Tracker",
+                    color = TextPrimary,
+                    fontSize = if (compact) 13.sp else 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1
+                )
+            }
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { }
+                    .padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = projectName.ifBlank { "Untitled Project" },
+                    color = TextSecondary,
+                    fontSize = if (compact) 10.sp else 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = if (compact) 120.dp else 200.dp)
+                )
+                Icon(
+                    imageVector = Icons.Outlined.KeyboardArrowDown,
+                    contentDescription = "Select project",
+                    tint = TextSecondary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
 
         Spacer(Modifier.weight(1f))
@@ -370,6 +364,65 @@ private fun NavRow(
                 maxLines = 1,
                 modifier = Modifier.padding(start = 14.dp)
             )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Bottom workspace navigation
+// ---------------------------------------------------------------------------
+
+@Composable
+fun WorkspaceBottomBar(
+    selected: String,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val items = listOf(
+        NavItem("Home", Icons.Outlined.Home),
+        NavItem("Tracking", Icons.Outlined.MyLocation),
+        NavItem("Adjust", Icons.Outlined.Tune),
+        NavItem("3D Scene", Icons.Outlined.ViewInAr),
+        NavItem("Camera", Icons.Outlined.PhotoCamera),
+        NavItem("Tools", Icons.Outlined.Build),
+        NavItem("More", Icons.Outlined.MoreVert)
+    )
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(62.dp)
+            .background(PanelBackground)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        items.forEach { item ->
+            val active = selected == item.label
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (active) SelectedItemBackground else Color.Transparent)
+                    .clickable { onSelect(item.label) }
+                    .padding(vertical = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = item.icon,
+                    contentDescription = item.label,
+                    tint = if (active) AccentPrimary else TextSecondary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(
+                    text = item.label,
+                    color = if (active) TextPrimary else TextSecondary,
+                    fontSize = 9.sp,
+                    maxLines = 1
+                )
+            }
         }
     }
 }

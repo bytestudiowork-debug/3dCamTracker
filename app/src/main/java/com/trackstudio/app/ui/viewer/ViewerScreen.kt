@@ -27,7 +27,10 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.FullscreenExit
 import androidx.compose.material.icons.outlined.ViewInAr
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -51,6 +54,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.trackstudio.app.playback.PlaybackState
+import com.trackstudio.app.tracking.model.TrackPoint
+import com.trackstudio.app.tracking.model.TrackingProgress
 import com.trackstudio.app.ui.theme.AccentError
 import com.trackstudio.app.ui.theme.AccentPrimary
 import com.trackstudio.app.ui.theme.AccentSuccess
@@ -91,14 +96,9 @@ fun ViewerScreen(
     var zoom by remember { mutableFloatStateOf(1f) }
     var sidebarSelection by remember { mutableStateOf("Home") }
     var fullscreen by remember { mutableStateOf(false) }
-    var panelOpen by remember { mutableStateOf(false) }
 
     BackHandler {
-        when {
-            panelOpen -> panelOpen = false
-            fullscreen -> fullscreen = false
-            else -> onBack()
-        }
+        if (fullscreen) fullscreen = false else onBack()
     }
 
     BoxWithConstraints(
@@ -109,45 +109,33 @@ fun ViewerScreen(
         val windowWidth = maxWidth
         val windowHeight = maxHeight
         val compactHeight = windowHeight < 460.dp
-        val sidebarMode =
-            if (windowWidth >= 1000.dp) SidebarMode.FULL else SidebarMode.RAIL
-        val inlinePanel = windowWidth >= 840.dp
-        val panelWidth = if (windowWidth >= 1100.dp) 320.dp else 280.dp
+        val panelWidth = when {
+            windowWidth >= 1100.dp -> 320.dp
+            windowWidth >= 800.dp -> 280.dp
+            windowWidth >= 640.dp -> 240.dp
+            else -> 200.dp
+        }
         val gap = if (compactHeight) 8.dp else 12.dp
 
         Column(Modifier.fillMaxSize()) {
-            if (!fullscreen) {
-                WorkspaceTopBar(
-                    projectName = projectName,
-                    compact = compactHeight,
-                    showTitle = windowWidth >= 720.dp,
-                    showPanelToggle = !inlinePanel,
-                    onTogglePanel = { panelOpen = !panelOpen },
-                    onCloseProject = onBack
-                )
-            }
+            WorkspaceTopBar(
+                projectName = projectName,
+                compact = compactHeight,
+                showTitle = windowWidth >= 420.dp,
+                showPanelToggle = false,
+                onTogglePanel = {},
+                onCloseProject = onBack
+            )
 
             Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
+                modifier = Modifier.weight(1f).fillMaxWidth()
             ) {
-                if (!fullscreen) {
-                    WorkspaceSidebar(
-                        mode = sidebarMode,
-                        selected = sidebarSelection,
-                        onSelect = { sidebarSelection = it }
-                    )
-                }
-
                 Column(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
                         .padding(if (fullscreen) 0.dp else gap),
-                    verticalArrangement =
-                        if (fullscreen) Arrangement.Top
-                        else Arrangement.spacedBy(gap)
+                    verticalArrangement = Arrangement.spacedBy(if (fullscreen) 0.dp else gap)
                 ) {
                     ViewerPanel(
                         bitmap = state.currentBitmap,
@@ -156,64 +144,58 @@ fun ViewerScreen(
                         playback = state.playback,
                         zoom = zoom,
                         onZoomChanged = { zoom = it },
+                        tracks = state.tracks,
+                        currentFrame = state.playback.currentFrame,
+                        isPlacingTrackPoint = false,
+                        isTracking = state.isTracking,
+                        trackingProgress = state.trackingProgress,
+                        trackingError = state.trackingError,
+                        onAddPoint = {},
+                        onImageTap = { _, _ -> },
+                        onTrackToEnd = {},
+                        onAutoTrack = viewModel::detectAndTrackToEnd,
+                        onCancelTracking = viewModel::cancelTracking,
                         compact = compactHeight,
                         fullscreen = fullscreen,
                         onToggleFullscreen = { fullscreen = !fullscreen },
                         onPlayPause = viewModel::playPause,
                         onSeek = viewModel::seekTo,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
+                        modifier = Modifier.weight(1f).fillMaxWidth()
                     )
 
-                    if (!fullscreen) {
-                        PlaybackPanel(
-                            state = state,
-                            compact = compactHeight,
-                            isFullscreen = false,
-                            onToggleFullscreen = { fullscreen = true },
-                            onPlayPause = viewModel::playPause,
-                            onFirstFrame = viewModel::firstFrame,
-                            onLastFrame = viewModel::lastFrame,
-                            onSeek = viewModel::seekTo,
-                            onSpeedChanged = viewModel::setPlaybackSpeed,
-                            onThumbnailsNeeded = viewModel::ensureThumbnails
-                        )
-                    }
+                    PlaybackPanel(
+                        state = state,
+                        compact = compactHeight,
+                        isFullscreen = fullscreen,
+                        onToggleFullscreen = { fullscreen = !fullscreen },
+                        onPlayPause = viewModel::playPause,
+                        onFirstFrame = viewModel::firstFrame,
+                        onLastFrame = viewModel::lastFrame,
+                        onSeek = viewModel::seekTo,
+                        onSpeedChanged = viewModel::setPlaybackSpeed,
+                        onThumbnailsNeeded = viewModel::ensureThumbnails
+                    )
                 }
 
-                if (inlinePanel && !fullscreen) {
+                if (!fullscreen) {
                     WorkspaceRightPanel(
                         modifier = Modifier
                             .width(panelWidth)
                             .fillMaxHeight()
-                            .padding(
-                                top = gap,
-                                end = gap,
-                                bottom = gap
-                            )
+                            .padding(top = gap, end = gap, bottom = gap),
+                        canTrack = state.currentBitmap != null &&
+                            state.playback.currentFrame < state.playback.frameCount - 1,
+                        isTracking = state.isTracking,
+                        progress = state.trackingProgress?.fraction ?: 0f,
+                        onAutoTrack = viewModel::detectAndTrackToEnd,
+                        onCancelTracking = viewModel::cancelTracking
                     )
                 }
             }
-        }
 
-        if (panelOpen && !inlinePanel && !fullscreen) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0x99000000))
-                    .pointerInput(Unit) {
-                        detectTapGestures { panelOpen = false }
-                    }
-            )
-
-            WorkspaceRightPanel(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .width(280.dp)
-                    .fillMaxHeight()
-                    .background(PanelBackground)
-                    .padding(10.dp)
+            WorkspaceBottomBar(
+                selected = sidebarSelection,
+                onSelect = { sidebarSelection = it }
             )
         }
     }
@@ -227,6 +209,17 @@ private fun ViewerPanel(
     playback: PlaybackState,
     zoom: Float,
     onZoomChanged: (Float) -> Unit,
+    tracks: List<TrackPoint>,
+    currentFrame: Int,
+    isPlacingTrackPoint: Boolean,
+    isTracking: Boolean,
+    trackingProgress: TrackingProgress?,
+    trackingError: String?,
+    onAddPoint: (Boolean) -> Unit,
+    onImageTap: (Float, Float) -> Unit,
+    onTrackToEnd: () -> Unit,
+    onAutoTrack: () -> Unit,
+    onCancelTracking: () -> Unit,
     compact: Boolean,
     fullscreen: Boolean,
     onToggleFullscreen: () -> Unit,
@@ -254,6 +247,9 @@ private fun ViewerPanel(
             isLoading = isLoading,
             requestedZoom = zoom,
             onZoomChanged = onZoomChanged,
+            onImageCoordinateTap = if (isPlacingTrackPoint && !isTracking) onImageTap else null,
+            trackingPoints = tracks,
+            currentFrameIndex = currentFrame,
             backgroundColor = ViewerBackground,
             showZoomLabel = false,
             modifier = Modifier.fillMaxSize()
@@ -329,22 +325,58 @@ private fun ViewerPanel(
                 .align(Alignment.BottomStart)
                 .padding(if (compact) 8.dp else 10.dp)
         )
-
-        if (fullscreen && playback.frameCount > 0) {
-            FullscreenPlayback(
-                playback = playback,
-                compact = compact,
-                onPlayPause = onPlayPause,
-                onSeek = onSeek,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal = if (compact) 8.dp else 18.dp,
-                        vertical = if (compact) 8.dp else 14.dp
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(if (compact) 8.dp else 12.dp),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            if (trackingError != null) {
+                Text(
+                    text = trackingError,
+                    color = MaterialTheme.colorScheme.error,
+                    fontSize = 10.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xE60B1220))
+                        .padding(6.dp)
+                )
+            }
+            if (isTracking) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xE60B1220))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    CircularProgressIndicator(
+                        progress = trackingProgress?.fraction ?: 0f,
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp
                     )
-            )
+                    Text(
+                        text = "Tracking ${trackingProgress?.completedFrames ?: 0}/${trackingProgress?.totalFrames ?: 0}",
+                        color = TextPrimary,
+                        fontSize = 11.sp
+                    )
+                    OutlinedButton(onClick = onCancelTracking) { Text("Cancel") }
+                }
+            } else {
+                Text(
+                    text = "Use Start Auto Tracking in the Tracking panel",
+                    color = TextSecondary,
+                    fontSize = 10.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xE60B1220))
+                        .padding(horizontal = 8.dp, vertical = 5.dp)
+                )
+            }
         }
+
 
         if (errorMessage != null) {
             Text(

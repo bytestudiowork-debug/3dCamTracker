@@ -11,6 +11,14 @@ import androidx.lifecycle.viewModelScope
 import com.trackstudio.app.playback.FrameSource
 import com.trackstudio.app.playback.PlaybackController
 import com.trackstudio.app.playback.PlaybackState
+import com.trackstudio.app.tracking.core.TrackingEngine
+import com.trackstudio.app.tracking.core.TrackingSequenceProcessor
+import com.trackstudio.app.tracking.core.UriTrackingFrameProvider
+import com.trackstudio.app.tracking.model.ImagePoint
+import com.trackstudio.app.tracking.model.TrackObservation
+import com.trackstudio.app.tracking.model.TrackPoint
+import com.trackstudio.app.tracking.model.TrackStatus
+import com.trackstudio.app.tracking.model.TrackingProgress
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
@@ -35,7 +43,12 @@ data class ViewerUiState(
     val currentBitmap: Bitmap? = null,
     val isLoadingFrame: Boolean = false,
     val errorMessage: String? = null,
-    val thumbnails: Map<Int, Bitmap> = emptyMap()
+    val thumbnails: Map<Int, Bitmap> = emptyMap(),
+    val tracks: List<TrackPoint> = emptyList(),
+    val isPlacingTrackPoint: Boolean = false,
+    val isTracking: Boolean = false,
+    val trackingProgress: TrackingProgress? = null,
+    val trackingError: String? = null
 )
 
 class ViewerViewModel(
@@ -83,6 +96,8 @@ class ViewerViewModel(
     private var requestJob: Job? = null
     private var thumbnailJob: Job? = null
     private var thumbnailCount = 0
+    private var trackingJob: Job? = null
+    private var nextTrackId = 1L
 
     private val frameSource =
         object : FrameSource {
@@ -105,6 +120,7 @@ class ViewerViewModel(
     fun loadSequence(uris: List<Uri>, fps: Double) {
         requestJob?.cancel()
         thumbnailJob?.cancel()
+        trackingJob?.cancel()
         playbackController.release()
         inFlight.values.forEach { it.cancel() }
         inFlight.clear()
@@ -114,6 +130,7 @@ class ViewerViewModel(
         bitmapCache.evictAll()
         frameBytes = 0
         thumbnailCount = 0
+        nextTrackId = 1L
         wantedCenter = 0
 
         val safeFps = fps.coerceIn(1.0, 240.0)
@@ -161,15 +178,163 @@ class ViewerViewModel(
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null) }
     }
+    fun setPointPlacement(enabled: Boolean) {
+        _uiState.update { it.copy(isPlacingTrackPoint = enabled) }
+    }
+
+    fun addManualTrackPoint(x: Float, y: Float) {
+        val state = _uiState.value
+        if (!state.isPlacingTrackPoint || state.currentBitmap == null ||
+            state.playback.currentFrame !in frameUris.indices || state.isTracking
+        ) return
+
+        val track = TrackPoint(
+            id = nextTrackId++,
+            label = "Track ${nextTrackId - 1}",
+            isManuallyCreated = true,
+            observations = listOf(
+                TrackObservation(
+                    frameIndex = state.playback.currentFrame,
+                    point = ImagePoint(x, y),
+                    confidence = 1f,
+                    status = TrackStatus.ACTIVE
+                )
+            )
+        )
+        _uiState.update { it.copy(tracks = it.tracks + track) }
+    }
+
+    fun removeTrack(trackId: Long) {
+        if (_uiState.value.isTracking) return
+        _uiState.update { it.copy(tracks = it.tracks.filterNot { track -> track.id == trackId }) }
+    }
+
+    fun trackManualPointsToEnd() {
+        val state = _uiState.value
+        val start = state.playback.currentFrame
+        val end = state.playback.frameCount - 1
+        if (state.isTracking || start >= end) return
+        val seeds = state.tracks.filter { it.observationAt(start)?.status == TrackStatus.ACTIVE }
+        if (seeds.isEmpty()) {
+            _uiState.update { it.copy(trackingError = "Place at least one tracking point on the current frame.") }
+            return
+        }
+        runTracking(start, end, seeds, automatic = false)
+    }
+
+    fun detectAndTrackToEnd() {
+        val state = _uiState.value
+        val start = state.playback.currentFrame
+        val end = state.playback.frameCount - 1
+        if (state.isTracking || start >= end) return
+        runTracking(start, end, emptyList(), automatic = true)
+    }
+
+    fun cancelTracking() {
+        trackingJob?.cancel()
+    }
+
+    private fun runTracking(
+        startFrame: Int,
+        endFrame: Int,
+        seeds: List<TrackPoint>,
+        automatic: Boolean
+    ) {
+        trackingJob?.cancel()
+        val engine = TrackingEngine()
+        val generation = sequenceGeneration
+        val frameUrisSnapshot = frameUris.toList()
+        _uiState.update {
+            it.copy(isTracking = true, trackingProgress = null, trackingError = null)
+        }
+        trackingJob = viewModelScope.launch {
+            try {
+                val provider = UriTrackingFrameProvider(appContext.contentResolver, frameUrisSnapshot)
+                val processor = TrackingSequenceProcessor(engine, provider)
+                val sourceWidth = _uiState.value.currentBitmap?.width ?: 0
+                val sourceHeight = _uiState.value.currentBitmap?.height ?: 0
+                val initialFrame = provider.loadFrame(startFrame, engine.maximumAnalysisDimension)
+                val scaleX = initialFrame.width.toFloat() / sourceWidth.coerceAtLeast(1)
+                val scaleY = initialFrame.height.toFloat() / sourceHeight.coerceAtLeast(1)
+                provider.releaseFrame(initialFrame)
+                val scaledSeeds = seeds.map { track ->
+                    track.copy(observations = track.observations.map { observation ->
+                        observation.copy(
+                            point = ImagePoint(
+                                observation.point.x * scaleX,
+                                observation.point.y * scaleY
+                            )
+                        )
+                    })
+                }
+                val result = if (automatic) {
+                    processor.trackAutomatic(
+                        startFrame = startFrame,
+                        endFrame = endFrame,
+                        firstTrackId = nextTrackId
+                    ) { progress ->
+                        if (generation == sequenceGeneration) {
+                            _uiState.update { it.copy(trackingProgress = progress) }
+                        }
+                    }
+                } else {
+                    processor.trackManual(
+                        startFrame = startFrame,
+                        endFrame = endFrame,
+                        tracks = scaledSeeds
+                    ) { progress ->
+                        if (generation == sequenceGeneration) {
+                            _uiState.update { it.copy(trackingProgress = progress) }
+                        }
+                    }
+                }
+                if (generation == sequenceGeneration) {
+                    val mapped = result.map { track ->
+                        track.copy(observations = track.observations.map { observation ->
+                            observation.copy(
+                                point = ImagePoint(
+                                    observation.point.x / scaleX,
+                                    observation.point.y / scaleY
+                                )
+                            )
+                        })
+                    }
+                    _uiState.update {
+                        val merged = if (automatic) it.tracks + mapped
+                        else it.tracks.map { old -> mapped.firstOrNull { it.id == old.id } ?: old }
+                        nextTrackId = maxOf(nextTrackId, (merged.maxOfOrNull { it.id } ?: 0L) + 1L)
+                        it.copy(tracks = merged, isTracking = false, trackingProgress = null)
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (t: Throwable) {
+                if (generation == sequenceGeneration) {
+                    _uiState.update {
+                        it.copy(
+                            isTracking = false,
+                            trackingProgress = null,
+                            trackingError = t.message ?: "Tracking failed."
+                        )
+                    }
+                }
+            } finally {
+                if (generation == sequenceGeneration && _uiState.value.isTracking) {
+                    _uiState.update { it.copy(isTracking = false, trackingProgress = null) }
+                }
+            }
+        }
+    }
+
 
     /**
-     * Requests a modest set of evenly spaced preview thumbnails.
-     * These are visual landmarks, not a frame-by-frame strip.
+     * Requests a single lightweight timeline preview thumbnail.
+     * The timeline uses this image as a visual track, not a frame-by-frame strip.
      */
     fun ensureThumbnails(count: Int) {
         if (frameUris.isEmpty() || count <= 0) return
 
-        val targetCount = count.coerceIn(8, 48)
+        val targetCount = count.coerceIn(1, 1)
         if (targetCount == thumbnailCount) return
 
         thumbnailCount = targetCount
@@ -259,6 +424,10 @@ class ViewerViewModel(
             throw e
         } catch (t: Throwable) {
             reportError(index, t)
+            throw IllegalStateException(
+                "Playback stopped because frame ${index + 1} could not be decoded.",
+                t
+            )
         }
     }
 
@@ -442,6 +611,7 @@ class ViewerViewModel(
     override fun onCleared() {
         requestJob?.cancel()
         thumbnailJob?.cancel()
+        trackingJob?.cancel()
         playbackController.release()
         inFlight.values.forEach { it.cancel() }
         inFlight.clear()

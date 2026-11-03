@@ -26,6 +26,9 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.ScatterPlot
 import androidx.compose.material.icons.outlined.ViewInAr
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -61,19 +64,50 @@ import kotlin.math.roundToInt
  */
 @Composable
 fun WorkspaceRightPanel(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    canTrack: Boolean,
+    isTracking: Boolean,
+    progress: Float,
+    onAutoTrack: () -> Unit,
+    onCancelTracking: () -> Unit
 ) {
     Column(
         modifier = modifier.verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        TrackingToolsCard()
+        PanelCard(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Build,
+                    contentDescription = null,
+                    tint = AccentPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(
+                    text = "Tools",
+                    color = TextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(start = 10.dp)
+                )
+            }
+        }
+        TrackingToolsCard(canTrack, isTracking, progress, onAutoTrack, onCancelTracking)
         QuickActionsCard()
     }
 }
 
 @Composable
-private fun TrackingToolsCard() {
+private fun TrackingToolsCard(
+    canTrack: Boolean,
+    isTracking: Boolean,
+    progress: Float,
+    onAutoTrack: () -> Unit,
+    onCancelTracking: () -> Unit
+) {
     PanelCard(modifier = Modifier.fillMaxWidth()) {
 
         CollapsibleSection(
@@ -81,26 +115,35 @@ private fun TrackingToolsCard() {
             title = "Tracking Tools",
             titleSize = 16
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                ChromeButton(
-                    text = "Auto Track",
-                    icon = Icons.Outlined.GpsFixed,
-                    filled = true,
-                    onClick = { },
-                    modifier = Modifier.weight(1f)
-                )
-
-                ChromeButton(
-                    text = "Manual Track",
-                    icon = Icons.Outlined.Edit,
-                    onClick = { },
-                    modifier = Modifier.weight(1f)
-                )
+                if (isTracking) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(progress = progress, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        Text("Tracking in progress", color = TextPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f).padding(start = 8.dp))
+                    }
+                    ChromeButton(
+                        text = "Stop Tracking",
+                        icon = Icons.Outlined.DeleteOutline,
+                        onClick = onCancelTracking,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    ChromeButton(
+                        text = "Start Auto Tracking",
+                        icon = Icons.Outlined.GpsFixed,
+                        filled = true,
+                        onClick = onAutoTrack,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text = "Automatically detect feature points on the current frame and follow them through the remaining sequence.",
+                        color = TextSecondary,
+                        fontSize = 11.sp
+                    )
+                }
             }
         }
 
