@@ -114,7 +114,9 @@ fun ViewerScreen(
         val windowHeight = maxHeight
         val compactHeight = windowHeight < 460.dp
         val inlinePanel = windowWidth >= 720.dp
-        val panelWidth = (windowWidth * 0.28f).coerceIn(260.dp, 380.dp)
+        // Keep the inspector useful without taking space away from the footage.
+        val panelWidth = (windowWidth * 0.24f).coerceIn(220.dp, 340.dp)
+        val playbackHeight = (windowHeight * 0.22f).coerceIn(112.dp, 184.dp)
         val drawerWidth = minOf(320.dp, windowWidth * 0.88f)
         val gap = if (compactHeight) 8.dp else 12.dp
 
@@ -199,6 +201,7 @@ fun ViewerScreen(
                 poster = timelinePoster ?: state.currentBitmap,
                 compact = compactHeight,
                 isFullscreen = fullscreen,
+                panelHeight = playbackHeight,
                 onToggleFullscreen = { fullscreen = !fullscreen },
                 onPlayPause = viewModel::playPause,
                 onFirstFrame = viewModel::firstFrame,

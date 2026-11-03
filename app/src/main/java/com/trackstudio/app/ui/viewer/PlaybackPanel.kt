@@ -18,9 +18,11 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
@@ -28,6 +30,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.outlined.ArrowDropDown
+import androidx.compose.material.icons.outlined.Fullscreen
+import androidx.compose.material.icons.outlined.FullscreenExit
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -47,6 +51,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import com.trackstudio.app.playback.PlaybackState
 import com.trackstudio.app.ui.theme.AccentPrimary
@@ -68,6 +73,7 @@ fun PlaybackPanel(
     poster: Bitmap?,
     compact: Boolean,
     isFullscreen: Boolean,
+    panelHeight: Dp,
     onToggleFullscreen: () -> Unit,
     onPlayPause: () -> Unit,
     onFirstFrame: () -> Unit,
@@ -82,7 +88,7 @@ fun PlaybackPanel(
     PanelCard(
         modifier = modifier
             .fillMaxWidth()
-            .height(if (compact) 104.dp else 124.dp)
+            .height(panelHeight)
     ) {
         Column(
             modifier = Modifier
@@ -96,6 +102,8 @@ fun PlaybackPanel(
                 playback = playback,
                 compact = compact,
                 hasFrames = hasFrames,
+                isFullscreen = isFullscreen,
+                onToggleFullscreen = onToggleFullscreen,
                 onPlayPause = onPlayPause,
                 onFirstFrame = onFirstFrame,
                 onLastFrame = onLastFrame
@@ -107,6 +115,7 @@ fun PlaybackPanel(
                 currentFrame = playback.currentFrame,
                 fps = playback.fps,
                 compact = compact,
+                modifier = Modifier.weight(1f),
                 onSeek = onSeek
             )
         }
@@ -118,37 +127,22 @@ private fun PlaybackHeader(
     playback: PlaybackState,
     compact: Boolean,
     hasFrames: Boolean,
+    isFullscreen: Boolean,
+    onToggleFullscreen: () -> Unit,
     onPlayPause: () -> Unit,
     onFirstFrame: () -> Unit,
     onLastFrame: () -> Unit
 ) {
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(if (compact) 32.dp else 36.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .height(if (compact) 34.dp else 40.dp),
+        contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = "F" + playback.frameNumber + " / F" + playback.frameCount,
-            color = TextPrimary,
-            fontSize = if (compact) 9.sp else 10.sp
-        )
-
-        Spacer(Modifier.width(6.dp))
-
-        Text(
-            text = formatTimecode(playback.currentFrame, playback.fps) +
-                " / " +
-                formatTimecode(maxOf(0, playback.frameCount - 1), playback.fps),
-            color = TextSecondary,
-            fontSize = if (compact) 9.sp else 10.sp
-        )
-
-        Spacer(Modifier.weight(1f))
-
         Row(
+            modifier = Modifier.align(Alignment.Center),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(1.dp)
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp)
         ) {
             ChromeIconButton(
                 icon = Icons.Filled.SkipPrevious,
@@ -156,35 +150,47 @@ private fun PlaybackHeader(
                 onClick = onFirstFrame,
                 enabled = hasFrames && !playback.isFirstFrame,
                 tint = TextPrimary,
-                buttonSize = if (compact) 30.dp else 34.dp,
-                iconSize = if (compact) 17.dp else 19.dp
+                buttonSize = if (compact) 32.dp else 38.dp,
+                iconSize = if (compact) 18.dp else 21.dp
             )
-
             ChromeIconButton(
                 icon = if (playback.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                 contentDescription = if (playback.isPlaying) "Pause" else "Play",
                 onClick = onPlayPause,
                 enabled = hasFrames,
                 tint = TextPrimary,
-                buttonSize = if (compact) 32.dp else 36.dp,
-                iconSize = if (compact) 20.dp else 23.dp,
+                buttonSize = if (compact) 38.dp else 48.dp,
+                iconSize = if (compact) 22.dp else 27.dp,
                 background = if (playback.isPlaying) PanelSurfaceRaised else Color.Transparent
             )
-
             ChromeIconButton(
                 icon = Icons.Filled.SkipNext,
                 contentDescription = "Last frame",
                 onClick = onLastFrame,
                 enabled = hasFrames && !playback.isLastFrame,
                 tint = TextPrimary,
-                buttonSize = if (compact) 30.dp else 34.dp,
-                iconSize = if (compact) 17.dp else 19.dp
+                buttonSize = if (compact) 32.dp else 38.dp,
+                iconSize = if (compact) 18.dp else 21.dp
             )
         }
 
-        Spacer(Modifier.weight(1f))
+        ChromeIconButton(
+            icon = if (isFullscreen) Icons.Outlined.FullscreenExit else Icons.Outlined.Fullscreen,
+            contentDescription = if (isFullscreen) "Exit fullscreen" else "Fullscreen timeline",
+            onClick = onToggleFullscreen,
+            modifier = Modifier.align(Alignment.CenterStart),
+            buttonSize = if (compact) 30.dp else 36.dp,
+            iconSize = if (compact) 17.dp else 20.dp,
+            tint = TextPrimary
+        )
 
-
+        Text(
+            text = formatTimecode(playback.currentFrame, playback.fps) +
+                "  /  " + formatTimecode(maxOf(0, playback.frameCount - 1), playback.fps),
+            color = TextPrimary,
+            fontSize = if (compact) 9.sp else 12.sp,
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
     }
 }
 
@@ -260,6 +266,7 @@ private fun TimelineStrip(
     currentFrame: Int,
     fps: Double,
     compact: Boolean,
+    modifier: Modifier = Modifier,
     onSeek: (Int) -> Unit
 ) {
     if (frameCount <= 0) return
@@ -271,7 +278,7 @@ private fun TimelineStrip(
         0f
     }
 
-    Column(Modifier.fillMaxWidth()) {
+    Column(modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -298,7 +305,8 @@ private fun TimelineStrip(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(if (compact) 36.dp else 42.dp)
+                .weight(1f)
+                .heightIn(min = if (compact) 40.dp else 48.dp)
                 .clip(RoundedCornerShape(5.dp))
                 .background(ViewerBackground)
                 .border(
@@ -330,13 +338,16 @@ private fun TimelineStrip(
                 }
         ) {
             if (poster != null) {
-                Image(
-                    bitmap = poster.asImageBitmap(),
-                    contentDescription = "Footage preview",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                )
+                Row(Modifier.fillMaxSize()) {
+                    repeat(10) { index ->
+                        Image(
+                            bitmap = poster.asImageBitmap(),
+                            contentDescription = if (index == 0) "Footage timeline thumbnails" else null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.weight(1f).fillMaxHeight()
+                        )
+                    }
+                }
             }
 
             Canvas(Modifier.fillMaxSize()) {
