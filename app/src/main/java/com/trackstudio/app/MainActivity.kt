@@ -2,6 +2,7 @@ package com.trackstudio.app
 
 import android.content.pm.ActivityInfo
 import android.os.Bundle
+import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.core.view.WindowCompat
@@ -55,6 +56,17 @@ class MainActivity : ComponentActivity() {
             ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        window.decorView.setOnSystemUiVisibilityChangeListener { visibility ->
+            val requiredFlags =
+                View.SYSTEM_UI_FLAG_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+
+            if (visibility and requiredFlags != requiredFlags) {
+                hideSystemBars()
+            }
+        }
+
         hideSystemBars()
 
         setContent {
@@ -62,6 +74,11 @@ class MainActivity : ComponentActivity() {
                 TrackStudioApp()
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        hideSystemBars()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
