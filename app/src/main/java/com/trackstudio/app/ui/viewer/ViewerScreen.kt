@@ -121,38 +121,22 @@ fun ViewerScreen(
         val gap = if (compactHeight) 8.dp else 12.dp
 
         Column(Modifier.fillMaxSize()) {
-            if (!fullscreen) {
-                WorkspaceTopBar(
-                    projectName = projectName,
-                    compact = compactHeight,
-                    showTitle = windowWidth >= 720.dp,
-                    showPanelToggle = !inlinePanel,
-                    onTogglePanel = { panelOpen = !panelOpen },
-                    onCloseProject = onBack
-                )
-            }
+            WorkspaceTopBar(
+                projectName = projectName,
+                compact = compactHeight,
+                showTitle = windowWidth >= 520.dp,
+                showPanelToggle = !inlinePanel,
+                onTogglePanel = { panelOpen = !panelOpen },
+                onCloseProject = onBack
+            )
 
             Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
+                modifier = Modifier.weight(1f).fillMaxWidth()
             ) {
-                if (!fullscreen) {
-                    WorkspaceSidebar(
-                        mode = sidebarMode,
-                        selected = sidebarSelection,
-                        onSelect = { sidebarSelection = it }
-                    )
-                }
-
                 Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
+                    modifier = Modifier.weight(1f).fillMaxHeight()
                         .padding(if (fullscreen) 0.dp else gap),
-                    verticalArrangement =
-                        if (fullscreen) Arrangement.Top
-                        else Arrangement.spacedBy(gap)
+                    verticalArrangement = Arrangement.spacedBy(if (fullscreen) 0.dp else gap)
                 ) {
                     ViewerPanel(
                         bitmap = state.currentBitmap,
@@ -163,13 +147,13 @@ fun ViewerScreen(
                         onZoomChanged = { zoom = it },
                         tracks = state.tracks,
                         currentFrame = state.playback.currentFrame,
-                        isPlacingTrackPoint = state.isPlacingTrackPoint,
+                        isPlacingTrackPoint = false,
                         isTracking = state.isTracking,
                         trackingProgress = state.trackingProgress,
                         trackingError = state.trackingError,
-                        onAddPoint = viewModel::setPointPlacement,
-                        onImageTap = viewModel::addManualTrackPoint,
-                        onTrackToEnd = viewModel::trackManualPointsToEnd,
+                        onAddPoint = {},
+                        onImageTap = {},
+                        onTrackToEnd = {},
                         onAutoTrack = viewModel::detectAndTrackToEnd,
                         onCancelTracking = viewModel::cancelTracking,
                         compact = compactHeight,
@@ -177,37 +161,27 @@ fun ViewerScreen(
                         onToggleFullscreen = { fullscreen = !fullscreen },
                         onPlayPause = viewModel::playPause,
                         onSeek = viewModel::seekTo,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
+                        modifier = Modifier.weight(1f).fillMaxWidth()
                     )
 
-                    if (!fullscreen) {
-                        PlaybackPanel(
-                            state = state,
-                            compact = compactHeight,
-                            isFullscreen = false,
-                            onToggleFullscreen = { fullscreen = true },
-                            onPlayPause = viewModel::playPause,
-                            onFirstFrame = viewModel::firstFrame,
-                            onLastFrame = viewModel::lastFrame,
-                            onSeek = viewModel::seekTo,
-                            onSpeedChanged = viewModel::setPlaybackSpeed,
-                            onThumbnailsNeeded = viewModel::ensureThumbnails
-                        )
-                    }
+                    PlaybackPanel(
+                        state = state,
+                        compact = compactHeight,
+                        isFullscreen = fullscreen,
+                        onToggleFullscreen = { fullscreen = !fullscreen },
+                        onPlayPause = viewModel::playPause,
+                        onFirstFrame = viewModel::firstFrame,
+                        onLastFrame = viewModel::lastFrame,
+                        onSeek = viewModel::seekTo,
+                        onSpeedChanged = viewModel::setPlaybackSpeed,
+                        onThumbnailsNeeded = viewModel::ensureThumbnails
+                    )
                 }
 
                 if (inlinePanel && !fullscreen) {
                     WorkspaceRightPanel(
-                        modifier = Modifier
-                            .width(panelWidth)
-                            .fillMaxHeight()
-                            .padding(
-                                top = gap,
-                                end = gap,
-                                bottom = gap
-                            )
+                        modifier = Modifier.width(panelWidth).fillMaxHeight()
+                            .padding(top = gap, end = gap, bottom = gap)
                     )
                 }
             }
