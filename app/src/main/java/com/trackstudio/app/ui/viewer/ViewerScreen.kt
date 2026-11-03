@@ -208,7 +208,12 @@ fun ViewerScreen(
                     .width(280.dp)
                     .fillMaxHeight()
                     .background(PanelBackground)
-                    .padding(10.dp)
+                    .padding(10.dp),
+                canTrack = state.currentBitmap != null && state.playback.currentFrame < state.playback.frameCount - 1,
+                isTracking = state.isTracking,
+                progress = state.trackingProgress?.fraction ?: 0f,
+                onAutoTrack = viewModel::detectAndTrackToEnd,
+                onCancelTracking = viewModel::cancelTracking
             )
         }
     }
