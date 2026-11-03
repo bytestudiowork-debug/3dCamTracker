@@ -328,13 +328,13 @@ class ViewerViewModel(
 
 
     /**
-     * Requests a modest set of evenly spaced preview thumbnails.
-     * These are visual landmarks, not a frame-by-frame strip.
+     * Requests a single lightweight timeline preview thumbnail.
+     * The timeline uses this image as a visual track, not a frame-by-frame strip.
      */
     fun ensureThumbnails(count: Int) {
         if (frameUris.isEmpty() || count <= 0) return
 
-        val targetCount = count.coerceIn(8, 48)
+        val targetCount = count.coerceIn(1, 1)
         if (targetCount == thumbnailCount) return
 
         thumbnailCount = targetCount
