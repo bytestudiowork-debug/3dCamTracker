@@ -4,7 +4,7 @@
 
 The tracking engine is independent of Compose and the viewer. Kotlin owns project/session state and frame acquisition. C++ owns pixel-level feature detection and optical flow. JNI calls are synchronous and are made from Dispatchers.Default, never from the UI thread.
 
-The frame provider must return software ARGB_8888 or RGB_565 bitmaps with identical dimensions for each adjacent pair. It must downscale to the engine's maximumAnalysisDimension, preferably from the project proxy when that resolution is sufficient. The sequence processor owns each returned bitmap until it calls releaseFrame; it holds no more than the previous and current frame.
+`UriTrackingFrameProvider` now decodes frames from the resolved viewer URI list on Dispatchers.IO, bounds each decoded dimension to the requested maximum, and returns software ARGB_8888 bitmaps. It does not cache decoded frames. The frame provider contract requires matching dimensions for each adjacent pair. The sequence processor owns each returned bitmap until it calls releaseFrame; it holds no more than the previous and current frame. Prefer the project proxy when its resolution is sufficient.
 
 ## Tracking pipeline
 
