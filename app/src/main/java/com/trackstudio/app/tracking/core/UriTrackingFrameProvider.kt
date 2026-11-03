@@ -64,7 +64,12 @@ class UriTrackingFrameProvider(
                 ?: error("Unable to decode frame ${index + 1}.")
         }
 
-        coroutineContext.ensureActive()
+        try {
+            coroutineContext.ensureActive()
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            decoded.recycle()
+            throw cancelled
+        }
         val softwareBitmap = if (
             decoded.config == Bitmap.Config.ARGB_8888 &&
             decoded.width <= maximumDimension &&
