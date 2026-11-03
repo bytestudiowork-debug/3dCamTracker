@@ -84,7 +84,7 @@ fun PlaybackPanel(
     PanelCard(
         modifier = modifier
             .fillMaxWidth()
-            .height(if (compact) 86.dp else 102.dp)
+            .height(if (compact) 104.dp else 124.dp)
     ) {
         Column(
             modifier = Modifier
@@ -191,13 +191,6 @@ private fun PlaybackHeader(
         }
 
         Spacer(Modifier.weight(1f))
-
-        SpeedMenu(
-            speed = playback.speed,
-            compact = compact,
-            enabled = hasFrames,
-            onSpeedChanged = onSpeedChanged
-        )
 
         ChromeIconButton(
             icon = if (isFullscreen) Icons.Outlined.FullscreenExit else Icons.Outlined.Fullscreen,
@@ -359,8 +352,7 @@ private fun TimelineStrip(
                     contentDescription = "Footage preview",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
-                        .width(if (compact) 96.dp else 128.dp)
-                        .fillMaxHeight()
+                        .fillMaxSize()
                 )
             }
 
