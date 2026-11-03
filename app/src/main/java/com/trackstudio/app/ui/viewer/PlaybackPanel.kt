@@ -4,10 +4,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,8 +16,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
@@ -67,7 +63,7 @@ fun PlaybackPanel(
     val progress = if (lastFrame == 0) 0f else playback.currentFrame.toFloat() / lastFrame
 
     LaunchedEffect(playback.frameCount) {
-        if (playback.frameCount > 0) onThumbnailsNeeded(12)
+        if (playback.frameCount > 0) onThumbnailsNeeded(1)
     }
 
     Column(
@@ -183,57 +179,84 @@ fun PlaybackPanel(
             }
         }
 
-        val thumbnails = state.thumbnails.toSortedMap()
-        if (thumbnails.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = if (playback.frameCount > 0) "Preparing frame thumbnails…" else "No frames loaded",
-                    color = TextSecondary,
-                    fontSize = 10.sp
-                )
-            }
-        } else {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                thumbnails.forEach { (frameIndex, bitmap) ->
-                    val selected = frameIndex == playback.currentFrame
-                    Column(
-                        modifier = Modifier
-                            .width(if (compact) 58.dp else 66.dp)
-                            .clickable { onSeek(frameIndex) },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Image(
-                            bitmap = bitmap.asImageBitmap(),
-                            contentDescription = "Frame ${frameIndex + 1}",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(if (compact) 42.dp else 50.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .border(
-                                    width = if (selected) 2.dp else 1.dp,
-                                    color = if (selected) AccentPrimary else PanelBorder,
-                                    shape = RoundedCornerShape(4.dp)
-                                )
-                        )
-                        Text(
-                            text = formatTimecode(frameIndex, playback.fps),
-                            color = if (selected) TextPrimary else TextSecondary,
-                            fontSize = 8.sp
-                        )
+        val timelineThumbnail = state.thumbnails.values.firstOrNull()
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .clip(RoundedCornerShape(5.dp))
+                .background(Color(0xFF0A1019))
+                .border(1.dp, PanelBorder, RoundedCornerShape(5.dp))
+                .pointerInput(playback.frameCount) {
+                    detectTapGestures { tap ->
+                        if (playback.frameCount > 1 && size.width > 0) {
+                            onSeek((tap.x / size.width * lastFrame).roundToInt().coerceIn(0, lastFrame))
+                        }
                     }
                 }
+                .pointerInput(playback.frameCount) {
+                    detectDragGestures { change, _ ->
+                        change.consume()
+                        if (playback.frameCount > 1 && size.width > 0) {
+                            onSeek((change.position.x / size.width * lastFrame).roundToInt().coerceIn(0, lastFrame))
+                        }
+                    }
+                }
+        ) {
+            if (timelineThumbnail != null) {
+                Image(
+                    bitmap = timelineThumbnail.asImageBitmap(),
+                    contentDescription = "Timeline preview thumbnail",
+                    contentScale = ContentScale.Crop,
+                    alpha = 0.72f,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Text(
+                    text = if (playback.frameCount > 0) "Preparing timeline…" else "No frames loaded",
+                    color = TextSecondary,
+                    fontSize = 10.sp,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0x66081018))
+            )
+            Canvas(Modifier.fillMaxSize()) {
+                val w = size.width
+                val h = size.height
+                val x = w * progress
+                repeat(11) { i ->
+                    val tickX = w * i / 10f
+                    drawLine(
+                        color = Color(0x99D7E0EC),
+                        start = androidx.compose.ui.geometry.Offset(tickX, h - 9.dp.toPx()),
+                        end = androidx.compose.ui.geometry.Offset(tickX, h),
+                        strokeWidth = 1.dp.toPx()
+                    )
+                }
+                drawLine(
+                    color = AccentPrimary,
+                    start = androidx.compose.ui.geometry.Offset(x, 0f),
+                    end = androidx.compose.ui.geometry.Offset(x, h),
+                    strokeWidth = 2.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+                drawCircle(
+                    color = AccentPrimary,
+                    radius = 5.dp.toPx(),
+                    center = androidx.compose.ui.geometry.Offset(x, 5.dp.toPx())
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().align(Alignment.BottomStart)
+                    .padding(horizontal = 5.dp, vertical = 1.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(formatTimecode(0, playback.fps), color = Color.White, fontSize = 8.sp)
+                Text(formatTimecode(lastFrame, playback.fps), color = Color.White, fontSize = 8.sp)
             }
         }
     }
