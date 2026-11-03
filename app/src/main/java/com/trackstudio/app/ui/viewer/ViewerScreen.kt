@@ -378,54 +378,18 @@ private fun ViewerPanel(
                     OutlinedButton(onClick = onCancelTracking) { Text("Cancel") }
                 }
             } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedButton(
-                        onClick = { onAddPoint(!isPlacingTrackPoint) },
-                        enabled = bitmap != null && playback.frameCount > 1
-                    ) {
-                        Text(if (isPlacingTrackPoint) "Finish Points" else "Add Point")
-                    }
-                    Button(
-                        onClick = onTrackToEnd,
-                        enabled = tracks.any { it.observationAt(currentFrame)?.status ==
-                            com.trackstudio.app.tracking.model.TrackStatus.ACTIVE } &&
-                            currentFrame < playback.frameCount - 1
-                    ) { Text("Track →") }
-                    OutlinedButton(
-                        onClick = onAutoTrack,
-                        enabled = bitmap != null && currentFrame < playback.frameCount - 1
-                    ) { Text("Auto Track") }
-                }
-                if (isPlacingTrackPoint) {
-                    Text(
-                        text = "Tap the image to place tracking points",
-                        color = TextPrimary,
-                        fontSize = 11.sp,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xE60B1220))
-                            .padding(horizontal = 8.dp, vertical = 5.dp)
-                    )
-                }
+                Text(
+                    text = "Use Start Auto Tracking in the Tracking panel",
+                    color = TextSecondary,
+                    fontSize = 10.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xE60B1220))
+                        .padding(horizontal = 8.dp, vertical = 5.dp)
+                )
             }
         }
 
-
-        if (fullscreen && playback.frameCount > 0) {
-            FullscreenPlayback(
-                playback = playback,
-                compact = compact,
-                onPlayPause = onPlayPause,
-                onSeek = onSeek,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal = if (compact) 8.dp else 18.dp,
-                        vertical = if (compact) 8.dp else 14.dp
-                    )
-            )
-        }
 
         if (errorMessage != null) {
             Text(
