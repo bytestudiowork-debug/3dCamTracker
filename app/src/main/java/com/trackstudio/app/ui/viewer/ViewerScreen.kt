@@ -387,7 +387,7 @@ private fun ViewerPanel(
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
                     CircularProgressIndicator(
-                        progress = { trackingProgress?.fraction ?: 0f },
+                        progress = trackingProgress?.fraction ?: 0f,
                         modifier = Modifier.size(18.dp),
                         strokeWidth = 2.dp
                     )
