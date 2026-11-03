@@ -163,7 +163,7 @@ class CameraTrackingEngine(
                                         points1.fromList(previousPoints)
                                         points2.fromList(currentPoints)
                                         essential.create(3, 3, CvType.CV_64F)
-                                        val found = Calib3d.findEssentialMat(
+                                        val essentialEstimate = Calib3d.findEssentialMat(
                                             points1,
                                             points2,
                                             cameraMatrix,
@@ -172,17 +172,21 @@ class CameraTrackingEngine(
                                             1.0,
                                             inlierMask
                                         )
-                                        if (!found.empty()) {
-                                            found.copyTo(essential)
-                                            inlierCount = Calib3d.recoverPose(
-                                                essential,
-                                                points1,
-                                                points2,
-                                                cameraMatrix,
-                                                rotation,
-                                                translation,
-                                                inlierMask
-                                            )
+                                        try {
+                                            if (!essentialEstimate.empty()) {
+                                                essentialEstimate.copyTo(essential)
+                                                inlierCount = Calib3d.recoverPose(
+                                                    essential,
+                                                    points1,
+                                                    points2,
+                                                    cameraMatrix,
+                                                    rotation,
+                                                    translation,
+                                                    inlierMask
+                                                )
+                                            }
+                                        } finally {
+                                            essentialEstimate.release()
                                         }
 
                                         if (inlierCount >= minimumMatches) {
