@@ -22,14 +22,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.FullscreenExit
 import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -50,7 +47,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import com.trackstudio.app.playback.PlaybackState
 import com.trackstudio.app.ui.theme.AccentError
 import com.trackstudio.app.ui.theme.AccentPrimary
 import com.trackstudio.app.ui.theme.AccentSuccess
@@ -59,7 +55,6 @@ import com.trackstudio.app.ui.theme.PanelBorder
 import com.trackstudio.app.ui.theme.TextPrimary
 import com.trackstudio.app.ui.theme.TextSecondary
 import com.trackstudio.app.ui.theme.ViewerBackground
-import com.trackstudio.app.util.formatTimecode
 import com.trackstudio.app.viewmodel.ViewerViewModel
 
 @Composable
@@ -72,8 +67,18 @@ fun ViewerScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
 
+    var timelinePoster by remember(projectName, frameUris) {
+        mutableStateOf<Bitmap?>(null)
+    }
+
     LaunchedEffect(frameUris, fps) {
         viewModel.loadSequence(frameUris, fps)
+    }
+
+    LaunchedEffect(state.currentBitmap) {
+        if (timelinePoster == null && state.currentBitmap != null) {
+            timelinePoster = state.currentBitmap
+        }
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -110,7 +115,7 @@ fun ViewerScreen(
         val windowHeight = maxHeight
         val compactHeight = windowHeight < 460.dp
         val sidebarMode =
-            if (windowWidth >= 1000.dp) SidebarMode.FULL else SidebarMode.RAIL
+            if (windowWidth >= 1600.dp) SidebarMode.FULL else SidebarMode.RAIL
         val inlinePanel = windowWidth >= 840.dp
         val panelWidth = if (windowWidth >= 1100.dp) 320.dp else 280.dp
         val gap = if (compactHeight) 8.dp else 12.dp
@@ -153,37 +158,35 @@ fun ViewerScreen(
                         bitmap = state.currentBitmap,
                         isLoading = state.isLoadingFrame,
                         errorMessage = state.errorMessage,
-                        playback = state.playback,
                         zoom = zoom,
                         onZoomChanged = { zoom = it },
                         compact = compactHeight,
                         fullscreen = fullscreen,
                         onToggleFullscreen = { fullscreen = !fullscreen },
-                        onPlayPause = viewModel::playPause,
-                        onSeek = viewModel::seekTo,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
                     )
 
-                    if (!fullscreen) {
-                        PlaybackPanel(
-                            state = state,
-                            compact = compactHeight,
-                            isFullscreen = false,
-                            onToggleFullscreen = { fullscreen = true },
-                            onPlayPause = viewModel::playPause,
-                            onFirstFrame = viewModel::firstFrame,
-                            onLastFrame = viewModel::lastFrame,
-                            onSeek = viewModel::seekTo,
-                            onSpeedChanged = viewModel::setPlaybackSpeed,
-                            onThumbnailsNeeded = viewModel::ensureThumbnails
-                        )
-                    }
+                    PlaybackPanel(
+                        state = state,
+                        poster = timelinePoster ?: state.currentBitmap,
+                        compact = compactHeight,
+                        isFullscreen = fullscreen,
+                        onToggleFullscreen = { fullscreen = !fullscreen },
+                        onPlayPause = viewModel::playPause,
+                        onFirstFrame = viewModel::firstFrame,
+                        onLastFrame = viewModel::lastFrame,
+                        onSeek = viewModel::seekTo,
+                        onSpeedChanged = viewModel::setPlaybackSpeed
+                    )
                 }
 
                 if (inlinePanel && !fullscreen) {
                     WorkspaceRightPanel(
+                        projectName = projectName,
+                        fps = state.playback.fps,
+                        frameCount = state.playback.frameCount,
                         modifier = Modifier
                             .width(panelWidth)
                             .fillMaxHeight()
@@ -208,6 +211,9 @@ fun ViewerScreen(
             )
 
             WorkspaceRightPanel(
+                projectName = projectName,
+                fps = state.playback.fps,
+                frameCount = state.playback.frameCount,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .width(280.dp)
@@ -224,14 +230,11 @@ private fun ViewerPanel(
     bitmap: Bitmap?,
     isLoading: Boolean,
     errorMessage: String?,
-    playback: PlaybackState,
     zoom: Float,
     onZoomChanged: (Float) -> Unit,
     compact: Boolean,
     fullscreen: Boolean,
     onToggleFullscreen: () -> Unit,
-    onPlayPause: () -> Unit,
-    onSeek: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val shape =
@@ -330,22 +333,6 @@ private fun ViewerPanel(
                 .padding(if (compact) 8.dp else 10.dp)
         )
 
-        if (fullscreen && playback.frameCount > 0) {
-            FullscreenPlayback(
-                playback = playback,
-                compact = compact,
-                onPlayPause = onPlayPause,
-                onSeek = onSeek,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal = if (compact) 8.dp else 18.dp,
-                        vertical = if (compact) 8.dp else 14.dp
-                    )
-            )
-        }
-
         if (errorMessage != null) {
             Text(
                 text = errorMessage,
@@ -359,66 +346,6 @@ private fun ViewerPanel(
                     .padding(horizontal = 10.dp, vertical = 6.dp)
             )
         }
-    }
-}
-
-@Composable
-private fun FullscreenPlayback(
-    playback: PlaybackState,
-    compact: Boolean,
-    onPlayPause: () -> Unit,
-    onSeek: (Int) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val maxFrame = (playback.frameCount - 1).coerceAtLeast(1)
-    val progress = playback.currentFrame.toFloat() / maxFrame.toFloat()
-
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(Color(0xE60B1220))
-            .border(
-                BorderStroke(1.dp, PanelBorder),
-                RoundedCornerShape(10.dp)
-            )
-            .padding(
-                horizontal = if (compact) 8.dp else 12.dp,
-                vertical = if (compact) 4.dp else 6.dp
-            ),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        ChromeIconButton(
-            icon = if (playback.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-            contentDescription = if (playback.isPlaying) "Pause" else "Play",
-            onClick = onPlayPause,
-            enabled = playback.frameCount > 0,
-            tint = TextPrimary,
-            buttonSize = if (compact) 34.dp else 40.dp,
-            iconSize = if (compact) 20.dp else 24.dp
-        )
-
-        Text(
-            text = formatTimecode(playback.currentFrame, playback.fps),
-            color = TextPrimary,
-            fontSize = if (compact) 9.sp else 10.sp,
-            modifier = Modifier.padding(horizontal = 6.dp)
-        )
-
-        Slider(
-            value = progress,
-            onValueChange = { value ->
-                onSeek((value * maxFrame).toInt().coerceIn(0, maxFrame))
-            },
-            modifier = Modifier.weight(1f),
-            valueRange = 0f..1f
-        )
-
-        Text(
-            text = formatTimecode(maxFrame, playback.fps),
-            color = TextSecondary,
-            fontSize = if (compact) 9.sp else 10.sp,
-            modifier = Modifier.padding(start = 6.dp)
-        )
     }
 }
 

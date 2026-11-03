@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.GpsFixed
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
@@ -61,14 +62,141 @@ import kotlin.math.roundToInt
  */
 @Composable
 fun WorkspaceRightPanel(
+    projectName: String,
+    fps: Double,
+    frameCount: Int,
     modifier: Modifier = Modifier
 ) {
+    var selectedTab by remember(projectName) { mutableStateOf("Tracking") }
+
     Column(
         modifier = modifier.verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        TrackingToolsCard()
-        QuickActionsCard()
+        PanelCard(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(62.dp)
+                    .padding(horizontal = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                InspectorTab(
+                    title = "Tracking",
+                    icon = Icons.Outlined.GpsFixed,
+                    selected = selectedTab == "Tracking",
+                    onClick = { selectedTab = "Tracking" },
+                    modifier = Modifier.weight(1f)
+                )
+                InspectorTab(
+                    title = "Tools",
+                    icon = Icons.Outlined.Build,
+                    selected = selectedTab == "Tools",
+                    onClick = { selectedTab = "Tools" },
+                    modifier = Modifier.weight(1f)
+                )
+                InspectorTab(
+                    title = "Project",
+                    icon = Icons.Outlined.FolderOpen,
+                    selected = selectedTab == "Project",
+                    onClick = { selectedTab = "Project" },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        when (selectedTab) {
+            "Tracking" -> {
+                TrackingToolsCard()
+                QuickActionsCard()
+            }
+            "Tools" -> QuickActionsCard()
+            else -> ProjectSummaryCard(projectName, fps, frameCount)
+        }
+    }
+}
+
+@Composable
+private fun InspectorTab(
+    title: String,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(62.dp)
+            .clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = title,
+            tint = if (selected) AccentPrimary else TextSecondary,
+            modifier = Modifier.size(21.dp)
+        )
+        Text(
+            text = title,
+            color = if (selected) AccentPrimary else TextSecondary,
+            fontSize = 12.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .background(AccentPrimary)
+            )
+        } else {
+            Spacer(Modifier.height(2.dp))
+        }
+    }
+}
+
+@Composable
+private fun ProjectSummaryCard(
+    projectName: String,
+    fps: Double,
+    frameCount: Int
+) {
+    PanelCard(modifier = Modifier.fillMaxWidth()) {
+        CollapsibleSection(
+            icon = Icons.Outlined.ViewInAr,
+            title = "Project Details",
+            titleSize = 16
+        ) {
+            ProjectDetailRow("Name", projectName.ifBlank { "Untitled Project" })
+            ProjectDetailRow("Frame rate", "${fps.toInt()} FPS")
+            ProjectDetailRow("Footage", "$frameCount frames")
+        }
+    }
+}
+
+@Composable
+private fun ProjectDetailRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            color = TextSecondary,
+            fontSize = 12.sp,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = value,
+            color = TextPrimary,
+            fontSize = 12.sp,
+            maxLines = 1
+        )
     }
 }
 

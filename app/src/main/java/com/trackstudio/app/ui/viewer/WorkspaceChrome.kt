@@ -111,7 +111,7 @@ fun WorkspaceTopBar(
 
         if (showTitle) {
             Text(
-                text = "3D Camera Tracker",
+                text = "TrackStudio",
                 color = TextPrimary,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
