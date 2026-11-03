@@ -144,10 +144,10 @@ class TrackingSequenceProcessor(
                     }
                 }
 
-                frames.releaseFrame(previousFrame)
                 previous = nextFrame
                 current = null
                 frameIndex = nextIndex
+                frames.releaseFrame(previousFrame)
 
                 onProgress(
                     TrackingProgress(
