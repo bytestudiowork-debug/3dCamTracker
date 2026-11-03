@@ -27,7 +27,10 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.FullscreenExit
 import androidx.compose.material.icons.outlined.ViewInAr
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -51,6 +54,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.trackstudio.app.playback.PlaybackState
+import com.trackstudio.app.tracking.model.TrackPoint
+import com.trackstudio.app.tracking.model.TrackingProgress
 import com.trackstudio.app.ui.theme.AccentError
 import com.trackstudio.app.ui.theme.AccentPrimary
 import com.trackstudio.app.ui.theme.AccentSuccess
@@ -156,6 +161,17 @@ fun ViewerScreen(
                         playback = state.playback,
                         zoom = zoom,
                         onZoomChanged = { zoom = it },
+                        tracks = state.tracks,
+                        currentFrame = state.playback.currentFrame,
+                        isPlacingTrackPoint = state.isPlacingTrackPoint,
+                        isTracking = state.isTracking,
+                        trackingProgress = state.trackingProgress,
+                        trackingError = state.trackingError,
+                        onAddPoint = viewModel::setPointPlacement,
+                        onImageTap = viewModel::addManualTrackPoint,
+                        onTrackToEnd = viewModel::trackManualPointsToEnd,
+                        onAutoTrack = viewModel::detectAndTrackToEnd,
+                        onCancelTracking = viewModel::cancelTracking,
                         compact = compactHeight,
                         fullscreen = fullscreen,
                         onToggleFullscreen = { fullscreen = !fullscreen },
@@ -227,6 +243,17 @@ private fun ViewerPanel(
     playback: PlaybackState,
     zoom: Float,
     onZoomChanged: (Float) -> Unit,
+    tracks: List<TrackPoint>,
+    currentFrame: Int,
+    isPlacingTrackPoint: Boolean,
+    isTracking: Boolean,
+    trackingProgress: TrackingProgress?,
+    trackingError: String?,
+    onAddPoint: (Boolean) -> Unit,
+    onImageTap: (Float, Float) -> Unit,
+    onTrackToEnd: () -> Unit,
+    onAutoTrack: () -> Unit,
+    onCancelTracking: () -> Unit,
     compact: Boolean,
     fullscreen: Boolean,
     onToggleFullscreen: () -> Unit,
@@ -254,6 +281,9 @@ private fun ViewerPanel(
             isLoading = isLoading,
             requestedZoom = zoom,
             onZoomChanged = onZoomChanged,
+            onImageCoordinateTap = if (isPlacingTrackPoint && !isTracking) onImageTap else null,
+            trackingPoints = tracks,
+            currentFrameIndex = currentFrame,
             backgroundColor = ViewerBackground,
             showZoomLabel = false,
             modifier = Modifier.fillMaxSize()
@@ -329,6 +359,78 @@ private fun ViewerPanel(
                 .align(Alignment.BottomStart)
                 .padding(if (compact) 8.dp else 10.dp)
         )
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(if (compact) 8.dp else 12.dp),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            if (trackingError != null) {
+                Text(
+                    text = trackingError,
+                    color = MaterialTheme.colorScheme.error,
+                    fontSize = 10.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xE60B1220))
+                        .padding(6.dp)
+                )
+            }
+            if (isTracking) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xE60B1220))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    CircularProgressIndicator(
+                        progress = { trackingProgress?.fraction ?: 0f },
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Text(
+                        text = "Tracking ${trackingProgress?.completedFrames ?: 0}/${trackingProgress?.totalFrames ?: 0}",
+                        color = TextPrimary,
+                        fontSize = 11.sp
+                    )
+                    OutlinedButton(onClick = onCancelTracking) { Text("Cancel") }
+                }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedButton(
+                        onClick = { onAddPoint(!isPlacingTrackPoint) },
+                        enabled = bitmap != null && playback.frameCount > 1
+                    ) {
+                        Text(if (isPlacingTrackPoint) "Finish Points" else "Add Point")
+                    }
+                    Button(
+                        onClick = onTrackToEnd,
+                        enabled = tracks.any { it.observationAt(currentFrame)?.status ==
+                            com.trackstudio.app.tracking.model.TrackStatus.ACTIVE } &&
+                            currentFrame < playback.frameCount - 1
+                    ) { Text("Track →") }
+                    OutlinedButton(
+                        onClick = onAutoTrack,
+                        enabled = bitmap != null && currentFrame < playback.frameCount - 1
+                    ) { Text("Auto Track") }
+                }
+                if (isPlacingTrackPoint) {
+                    Text(
+                        text = "Tap the image to place tracking points",
+                        color = TextPrimary,
+                        fontSize = 11.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xE60B1220))
+                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                    )
+                }
+            }
+        }
+
 
         if (fullscreen && playback.frameCount > 0) {
             FullscreenPlayback(
