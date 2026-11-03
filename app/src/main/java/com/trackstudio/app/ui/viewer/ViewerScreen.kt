@@ -207,11 +207,7 @@ fun ViewerScreen(
                 onSpeedChanged = viewModel::setPlaybackSpeed,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(
-                        horizontal = if (fullscreen) 0.dp else gap,
-                        top = if (fullscreen) 0.dp else gap,
-                        bottom = if (fullscreen) 0.dp else gap
-                    )
+                    .padding(if (fullscreen) 0.dp else gap)
             )
         }
     }
