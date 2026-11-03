@@ -286,8 +286,8 @@ Java_com_trackstudio_app_tracking_nativebridge_TrackingNative_nativeTrackPoints(
                         const float gy = 0.5f * (bilinear(b, qx, qy + 1) -
                                                  bilinear(b, qx, qy - 1));
                         const float difference =
-                            bilinear(b, qx, qy) - a.at(
-                                static_cast<int>(px) + wx, static_cast<int>(py) + wy);
+                            bilinear(b, qx, qy) - bilinear(
+                                a, px + wx, py + wy);
                         gxx += gx * gx;
                         gxy += gx * gy;
                         gyy += gy * gy;
