@@ -262,13 +262,7 @@ private fun ViewerPanel(
                     imageVector = Icons.Outlined.Fullscreen,
                     contentDescription = "Fullscreen",
                     tint = TextPrimary,
-                    modifier = Modifier.size(if (compact) 16.dp else 18.dp)
-                )
-                Text(
-                    text = "Fullscreen",
-                    color = TextPrimary,
-                    fontSize = if (compact) 12.sp else 13.sp,
-                    modifier = Modifier.padding(start = 6.dp)
+                    modifier = Modifier.size(if (compact) 18.dp else 22.dp)
                 )
             }
         } else {
@@ -283,13 +277,7 @@ private fun ViewerPanel(
                     imageVector = Icons.Outlined.FullscreenExit,
                     contentDescription = "Exit fullscreen",
                     tint = TextPrimary,
-                    modifier = Modifier.size(if (compact) 18.dp else 20.dp)
-                )
-                Text(
-                    text = "Exit",
-                    color = TextPrimary,
-                    fontSize = if (compact) 12.sp else 13.sp,
-                    modifier = Modifier.padding(start = 6.dp)
+                    modifier = Modifier.size(if (compact) 18.dp else 22.dp)
                 )
             }
         }
