@@ -2,6 +2,7 @@ package com.trackstudio.app.ui.viewer
 
 import android.graphics.Bitmap
 import android.view.MotionEvent
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -28,6 +29,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.ExperimentalComposeUiApi
+import com.trackstudio.app.tracking.model.ImagePoint
+import com.trackstudio.app.tracking.model.TrackPoint
+import com.trackstudio.app.tracking.model.TrackStatus
 import com.trackstudio.app.ui.theme.PanelSurface
 import com.trackstudio.app.ui.theme.TextSecondary
 import kotlin.math.exp
@@ -54,6 +58,8 @@ fun ViewerCanvas(
     requestedZoom: Float? = null,
     onZoomChanged: ((Float) -> Unit)? = null,
     onImageCoordinateTap: ((x: Float, y: Float) -> Unit)? = null,
+    trackingPoints: List<TrackPoint> = emptyList(),
+    currentFrameIndex: Int = 0,
     backgroundColor: Color = PanelSurface,
     showZoomLabel: Boolean = true
 ) {
@@ -237,6 +243,41 @@ fun ViewerCanvas(
                     modifier = Modifier.align(Alignment.TopEnd)
                 )
             }
+            if (trackingPoints.isNotEmpty()) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val fitScale = min(
+                        size.width / bitmap.width.toFloat(),
+                        size.height / bitmap.height.toFloat()
+                    )
+                    val baseLeft = (size.width - bitmap.width * fitScale) / 2f
+                    val baseTop = (size.height - bitmap.height * fitScale) / 2f
+                    val centerX = size.width / 2f
+                    val centerY = size.height / 2f
+                    trackingPoints.forEach { track ->
+                        val observation = track.observationAt(currentFrameIndex) ?: return@forEach
+                        val point = observation.point
+                        val x = centerX + transform.panX +
+                            (baseLeft + point.x * fitScale - centerX) * transform.zoom
+                        val y = centerY + transform.panY +
+                            (baseTop + point.y * fitScale - centerY) * transform.zoom
+                        if (x in 0f..size.width && y in 0f..size.height) {
+                            val color = if (observation.status == TrackStatus.ACTIVE) {
+                                Color(0xFF35D07F)
+                            } else {
+                                Color(0xFFFF6B6B)
+                            }
+                            drawCircle(color = Color.Black, radius = 9f, center = Offset(x, y))
+                            drawCircle(color = color, radius = 6f, center = Offset(x, y))
+                            drawCircle(
+                                color = Color.White,
+                                radius = 2f,
+                                center = Offset(x, y)
+                            )
+                        }
+                    }
+                }
+            }
+
         } else if (isLoading) {
             CircularProgressIndicator()
         } else {
