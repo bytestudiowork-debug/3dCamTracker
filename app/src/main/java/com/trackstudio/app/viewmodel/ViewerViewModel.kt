@@ -300,7 +300,6 @@ class ViewerViewModel(
                         })
                     }
                     _uiState.update {
-                        val existingIds = it.tracks.mapTo(mutableSetOf()) { track -> track.id }
                         val merged = if (automatic) it.tracks + mapped
                         else it.tracks.map { old -> mapped.firstOrNull { it.id == old.id } ?: old }
                         nextTrackId = maxOf(nextTrackId, (merged.maxOfOrNull { it.id } ?: 0L) + 1L)
