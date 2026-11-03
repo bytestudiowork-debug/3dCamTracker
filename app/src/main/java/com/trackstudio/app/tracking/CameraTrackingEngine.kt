@@ -11,6 +11,7 @@ import org.opencv.core.Mat
 import org.opencv.core.MatOfDMatch
 import org.opencv.core.MatOfPoint2f
 import org.opencv.core.Point
+import org.opencv.core.KeyPoint
 import org.opencv.features2d.BFMatcher
 import org.opencv.features2d.ORB
 import org.opencv.imgproc.Imgproc
@@ -54,6 +55,7 @@ class CameraTrackingEngine(
 
         var previousGray: Mat? = null
         var previousDescriptors: Mat? = null
+        var previousKeypointArray: Array<KeyPoint>? = null
         var accumulatedRotation = Mat.eye(3, 3, CvType.CV_64F)
         var accumulatedTranslation = Mat.zeros(3, 1, CvType.CV_64F)
         var totalInliers = 0
@@ -136,7 +138,7 @@ class CameraTrackingEngine(
                                     ) {
                                         val a = pair[0].queryIdx
                                         val b = pair[0].trainIdx
-                                        val prevArray = (previousKeypoints ?: continue).toArray()
+                                        val prevArray = previousKeypointArray ?: continue
                                         val currArray = keypoints.toArray()
                                         if (a < prevArray.size && b < currArray.size) {
                                             previousPoints += prevArray[a].pt
@@ -249,7 +251,7 @@ class CameraTrackingEngine(
                 previousDescriptors?.release()
                 previousGray = gray.clone()
                 previousDescriptors = descriptors
-                previousKeypoints = keypoints.clone()
+                previousKeypointArray = keypoints.toArray()
 
                 onProgress(
                     CameraTrackingProgress(
@@ -275,14 +277,12 @@ class CameraTrackingEngine(
         } finally {
             previousGray?.release()
             previousDescriptors?.release()
-            previousKeypoints?.release()
             accumulatedRotation.release()
             accumulatedTranslation.release()
             orb.clear()
         }
     }
 
-    private var previousKeypoints: org.opencv.core.MatOfKeyPoint? = null
 
     private fun identity3() = doubleArrayOf(
         1.0, 0.0, 0.0,
