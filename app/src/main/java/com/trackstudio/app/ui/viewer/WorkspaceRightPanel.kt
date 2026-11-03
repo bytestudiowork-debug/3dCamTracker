@@ -81,7 +81,8 @@ fun WorkspaceRightPanel(
 }
 
 @Composable
-private fun TrackingToolsCard(\n    canTrack: Boolean,\n    isTracking: Boolean,\n    progress: Float,\n    onAutoTrack: () -> Unit,\n    onCancelTracking: () -> Unit\n) {
+private fun TrackingToolsCard(
+    canTrack: Boolean,\n    isTracking: Boolean,\n    progress: Float,\n    onAutoTrack: () -> Unit,\n    onCancelTracking: () -> Unit\n) {
     PanelCard(modifier = Modifier.fillMaxWidth()) {
 
         CollapsibleSection(
