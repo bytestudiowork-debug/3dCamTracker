@@ -181,7 +181,12 @@ fun ViewerScreen(
                 if (inlinePanel && !fullscreen) {
                     WorkspaceRightPanel(
                         modifier = Modifier.width(panelWidth).fillMaxHeight()
-                            .padding(top = gap, end = gap, bottom = gap)
+                            .padding(top = gap, end = gap, bottom = gap),
+                        canTrack = state.currentBitmap != null && state.playback.currentFrame < state.playback.frameCount - 1,
+                        isTracking = state.isTracking,
+                        progress = state.trackingProgress?.fraction ?: 0f,
+                        onAutoTrack = viewModel::detectAndTrackToEnd,
+                        onCancelTracking = viewModel::cancelTracking
                     )
                 }
             }
