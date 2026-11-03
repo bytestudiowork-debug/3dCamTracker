@@ -113,8 +113,8 @@ fun ViewerScreen(
         val windowWidth = maxWidth
         val windowHeight = maxHeight
         val compactHeight = windowHeight < 460.dp
-        val inlinePanel = windowWidth >= 600.dp
-        val panelWidth = if (windowWidth >= 1200.dp) 320.dp else 280.dp
+        val inlinePanel = windowWidth >= 720.dp
+        val panelWidth = (windowWidth * 0.28f).coerceIn(260.dp, 380.dp)
         val drawerWidth = minOf(320.dp, windowWidth * 0.88f)
         val gap = if (compactHeight) 8.dp else 12.dp
 
@@ -123,7 +123,7 @@ fun ViewerScreen(
                 WorkspaceTopBar(
                     projectName = projectName,
                     compact = compactHeight,
-                    showTitle = windowWidth >= 720.dp,
+                    showTitle = windowWidth >= 600.dp,
                     showPanelToggle = false,
                     onTogglePanel = { panelOpen = !panelOpen },
                     onCloseProject = onBack
