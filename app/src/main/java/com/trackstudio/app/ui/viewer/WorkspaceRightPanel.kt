@@ -75,6 +75,26 @@ fun WorkspaceRightPanel(
         modifier = modifier.verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        PanelCard(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Build,
+                    contentDescription = null,
+                    tint = AccentPrimary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(
+                    text = "Tools",
+                    color = TextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(start = 10.dp)
+                )
+            }
+        }
         TrackingToolsCard(canTrack, isTracking, progress, onAutoTrack, onCancelTracking)
         QuickActionsCard()
     }
