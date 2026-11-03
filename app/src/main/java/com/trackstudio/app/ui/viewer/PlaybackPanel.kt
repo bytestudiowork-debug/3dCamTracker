@@ -94,7 +94,7 @@ fun PlaybackPanel(
                 .fillMaxSize()
                 .padding(
                     horizontal = if (compact) 8.dp else 12.dp,
-                    vertical = if (compact) 4.dp else 6.dp
+                    vertical = if (compact) 2.dp else 6.dp
                 )
         ) {
             PlaybackHeader(
@@ -135,7 +135,7 @@ private fun PlaybackHeader(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(if (compact) 34.dp else 40.dp),
+            .height(if (compact) 28.dp else 40.dp),
         contentAlignment = Alignment.Center
     ) {
         Row(
@@ -149,8 +149,8 @@ private fun PlaybackHeader(
                 onClick = onFirstFrame,
                 enabled = hasFrames && !playback.isFirstFrame,
                 tint = TextPrimary,
-                buttonSize = if (compact) 32.dp else 38.dp,
-                iconSize = if (compact) 18.dp else 21.dp
+                buttonSize = if (compact) 26.dp else 38.dp,
+                iconSize = if (compact) 16.dp else 21.dp
             )
             ChromeIconButton(
                 icon = if (playback.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
@@ -158,8 +158,8 @@ private fun PlaybackHeader(
                 onClick = onPlayPause,
                 enabled = hasFrames,
                 tint = TextPrimary,
-                buttonSize = if (compact) 38.dp else 48.dp,
-                iconSize = if (compact) 22.dp else 27.dp,
+                buttonSize = if (compact) 32.dp else 48.dp,
+                iconSize = if (compact) 20.dp else 27.dp,
                 background = if (playback.isPlaying) PanelSurfaceRaised else Color.Transparent
             )
             ChromeIconButton(
@@ -168,8 +168,8 @@ private fun PlaybackHeader(
                 onClick = onLastFrame,
                 enabled = hasFrames && !playback.isLastFrame,
                 tint = TextPrimary,
-                buttonSize = if (compact) 32.dp else 38.dp,
-                iconSize = if (compact) 18.dp else 21.dp
+                buttonSize = if (compact) 26.dp else 38.dp,
+                iconSize = if (compact) 16.dp else 21.dp
             )
         }
 
@@ -178,8 +178,8 @@ private fun PlaybackHeader(
             contentDescription = if (isFullscreen) "Exit fullscreen" else "Fullscreen timeline",
             onClick = onToggleFullscreen,
             modifier = Modifier.align(Alignment.CenterStart),
-            buttonSize = if (compact) 30.dp else 36.dp,
-            iconSize = if (compact) 17.dp else 20.dp,
+            buttonSize = if (compact) 26.dp else 36.dp,
+            iconSize = if (compact) 16.dp else 20.dp,
             tint = TextPrimary
         )
 
@@ -305,7 +305,7 @@ private fun TimelineStrip(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .heightIn(min = if (compact) 40.dp else 48.dp)
+                .heightIn(min = if (compact) 28.dp else 48.dp)
                 .clip(RoundedCornerShape(5.dp))
                 .background(ViewerBackground)
                 .border(

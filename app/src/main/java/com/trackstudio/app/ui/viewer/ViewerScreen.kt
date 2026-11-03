@@ -97,14 +97,6 @@ fun ViewerScreen(
     var fullscreen by remember { mutableStateOf(false) }
     var panelOpen by remember { mutableStateOf(true) }
 
-    BackHandler {
-        when {
-            panelOpen -> panelOpen = false
-            fullscreen -> fullscreen = false
-            else -> onBack()
-        }
-    }
-
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
@@ -113,12 +105,20 @@ fun ViewerScreen(
         val windowWidth = maxWidth
         val windowHeight = maxHeight
         val compactHeight = windowHeight < 460.dp
-        val inlinePanel = windowWidth >= 720.dp
+        val inlinePanel = windowWidth >= 640.dp
         // Keep the inspector useful without taking space away from the footage.
-        val panelWidth = (windowWidth * 0.24f).coerceIn(220.dp, 340.dp)
-        val playbackHeight = (windowHeight * 0.22f).coerceIn(112.dp, 184.dp)
+        val panelWidth = (windowWidth * 0.23f).coerceIn(196.dp, 320.dp)
+        val playbackHeight = (windowHeight * 0.14f).coerceIn(76.dp, 128.dp)
         val drawerWidth = minOf(320.dp, windowWidth * 0.88f)
         val gap = if (compactHeight) 8.dp else 12.dp
+
+        BackHandler {
+            when {
+                panelOpen && !inlinePanel -> panelOpen = false
+                fullscreen -> fullscreen = false
+                else -> onBack()
+            }
+        }
 
         Column(Modifier.fillMaxSize()) {
             if (!fullscreen) {
@@ -126,7 +126,7 @@ fun ViewerScreen(
                     projectName = projectName,
                     compact = compactHeight,
                     showTitle = windowWidth >= 600.dp,
-                    showPanelToggle = false,
+                    showPanelToggle = true,
                     onTogglePanel = { panelOpen = !panelOpen },
                     onCloseProject = onBack
                 )

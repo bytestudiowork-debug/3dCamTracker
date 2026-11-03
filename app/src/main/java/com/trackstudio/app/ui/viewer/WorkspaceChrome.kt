@@ -181,6 +181,15 @@ fun WorkspaceTopBar(
                 expanded = menuOpen,
                 onDismissRequest = { menuOpen = false }
             ) {
+                if (showPanelToggle) {
+                    DropdownMenuItem(
+                        text = { Text("Toggle inspector") },
+                        onClick = {
+                            menuOpen = false
+                            onTogglePanel()
+                        }
+                    )
+                }
                 DropdownMenuItem(
                     text = { Text("Close project") },
                     onClick = {
