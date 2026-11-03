@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Brush
+import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.GridOn
 import androidx.compose.material.icons.outlined.HelpOutline
