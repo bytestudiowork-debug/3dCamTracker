@@ -95,7 +95,7 @@ fun ViewerScreen(
 
     var zoom by remember { mutableFloatStateOf(1f) }
     var fullscreen by remember { mutableStateOf(false) }
-    var panelOpen by remember { mutableStateOf(false) }
+    var panelOpen by remember { mutableStateOf(true) }
 
     BackHandler {
         when {
@@ -113,7 +113,7 @@ fun ViewerScreen(
         val windowWidth = maxWidth
         val windowHeight = maxHeight
         val compactHeight = windowHeight < 460.dp
-        val inlinePanel = windowWidth >= 840.dp
+        val inlinePanel = windowWidth >= 600.dp
         val panelWidth = if (windowWidth >= 1200.dp) 320.dp else 280.dp
         val drawerWidth = minOf(320.dp, windowWidth * 0.88f)
         val gap = if (compactHeight) 8.dp else 12.dp
@@ -124,7 +124,7 @@ fun ViewerScreen(
                     projectName = projectName,
                     compact = compactHeight,
                     showTitle = windowWidth >= 720.dp,
-                    showPanelToggle = !inlinePanel,
+                    showPanelToggle = false,
                     onTogglePanel = { panelOpen = !panelOpen },
                     onCloseProject = onBack
                 )
@@ -158,7 +158,7 @@ fun ViewerScreen(
                             .fillMaxHeight()
                     )
 
-                    if (inlinePanel && !fullscreen) {
+                    if (inlinePanel && panelOpen && !fullscreen) {
                         WorkspaceRightPanel(
                             projectName = projectName,
                             fps = state.playback.fps,
@@ -250,26 +250,6 @@ private fun ViewerPanel(
             modifier = Modifier.fillMaxSize()
         )
 
-        OverlayChip(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(if (compact) 8.dp else 10.dp),
-            compact = compact
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.ViewInAr,
-                contentDescription = null,
-                tint = AccentPrimary,
-                modifier = Modifier.size(if (compact) 16.dp else 18.dp)
-            )
-            Text(
-                text = "3D View",
-                color = TextPrimary,
-                fontSize = if (compact) 12.sp else 13.sp,
-                modifier = Modifier.padding(start = 6.dp)
-            )
-        }
-
         if (!fullscreen) {
             OverlayChip(
                 modifier = Modifier
@@ -313,13 +293,6 @@ private fun ViewerPanel(
                 )
             }
         }
-
-        AxisLegend(
-            compact = compact,
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(if (compact) 8.dp else 10.dp)
-        )
 
         if (errorMessage != null) {
             Text(
