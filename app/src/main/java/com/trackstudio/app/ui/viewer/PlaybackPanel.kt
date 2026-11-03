@@ -28,8 +28,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.outlined.ArrowDropDown
-import androidx.compose.material.icons.outlined.Fullscreen
-import androidx.compose.material.icons.outlined.FullscreenExit
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -98,12 +96,9 @@ fun PlaybackPanel(
                 playback = playback,
                 compact = compact,
                 hasFrames = hasFrames,
-                isFullscreen = isFullscreen,
                 onPlayPause = onPlayPause,
                 onFirstFrame = onFirstFrame,
-                onLastFrame = onLastFrame,
-                onSpeedChanged = onSpeedChanged,
-                onToggleFullscreen = onToggleFullscreen
+                onLastFrame = onLastFrame
             )
 
             TimelineStrip(
@@ -123,12 +118,9 @@ private fun PlaybackHeader(
     playback: PlaybackState,
     compact: Boolean,
     hasFrames: Boolean,
-    isFullscreen: Boolean,
     onPlayPause: () -> Unit,
     onFirstFrame: () -> Unit,
-    onLastFrame: () -> Unit,
-    onSpeedChanged: (Double) -> Unit,
-    onToggleFullscreen: () -> Unit
+    onLastFrame: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -192,16 +184,7 @@ private fun PlaybackHeader(
 
         Spacer(Modifier.weight(1f))
 
-        ChromeIconButton(
-            icon = if (isFullscreen) Icons.Outlined.FullscreenExit else Icons.Outlined.Fullscreen,
-            contentDescription = if (isFullscreen) "Exit fullscreen" else "Fullscreen",
-            onClick = onToggleFullscreen,
-            enabled = hasFrames,
-            tint = TextSecondary,
-            buttonSize = if (compact) 30.dp else 34.dp,
-            iconSize = if (compact) 18.dp else 20.dp,
-            modifier = Modifier.padding(start = 2.dp)
-        )
+
     }
 }
 
