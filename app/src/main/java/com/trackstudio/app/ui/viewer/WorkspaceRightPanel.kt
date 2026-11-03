@@ -64,7 +64,12 @@ import kotlin.math.roundToInt
  */
 @Composable
 fun WorkspaceRightPanel(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    canTrack: Boolean,
+    isTracking: Boolean,
+    progress: Float,
+    onAutoTrack: () -> Unit,
+    onCancelTracking: () -> Unit
 ) {
     Column(
         modifier = modifier.verticalScroll(rememberScrollState()),
