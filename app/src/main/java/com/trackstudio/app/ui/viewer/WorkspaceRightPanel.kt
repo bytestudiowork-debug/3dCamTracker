@@ -106,10 +106,7 @@ fun WorkspaceRightPanel(
         }
 
         when (selectedTab) {
-            "Tracking" -> {
-                TrackingToolsCard()
-                QuickActionsCard()
-            }
+            "Tracking" -> TrackingToolsCard()
             "Tools" -> QuickActionsCard()
             else -> ProjectSummaryCard(projectName, fps, frameCount)
         }
