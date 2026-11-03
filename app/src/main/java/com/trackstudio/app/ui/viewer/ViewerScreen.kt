@@ -96,14 +96,9 @@ fun ViewerScreen(
     var zoom by remember { mutableFloatStateOf(1f) }
     var sidebarSelection by remember { mutableStateOf("Home") }
     var fullscreen by remember { mutableStateOf(false) }
-    var panelOpen by remember { mutableStateOf(false) }
 
     BackHandler {
-        when {
-            panelOpen -> panelOpen = false
-            fullscreen -> fullscreen = false
-            else -> onBack()
-        }
+        if (fullscreen) fullscreen = false else onBack()
     }
 
     BoxWithConstraints(
@@ -114,19 +109,21 @@ fun ViewerScreen(
         val windowWidth = maxWidth
         val windowHeight = maxHeight
         val compactHeight = windowHeight < 460.dp
-        val sidebarMode =
-            if (windowWidth >= 1000.dp) SidebarMode.FULL else SidebarMode.RAIL
-        val inlinePanel = windowWidth >= 840.dp
-        val panelWidth = if (windowWidth >= 1100.dp) 320.dp else 280.dp
+        val panelWidth = when {
+            windowWidth >= 1100.dp -> 320.dp
+            windowWidth >= 800.dp -> 280.dp
+            windowWidth >= 640.dp -> 240.dp
+            else -> 200.dp
+        }
         val gap = if (compactHeight) 8.dp else 12.dp
 
         Column(Modifier.fillMaxSize()) {
             WorkspaceTopBar(
                 projectName = projectName,
                 compact = compactHeight,
-                showTitle = windowWidth >= 520.dp,
-                showPanelToggle = !inlinePanel,
-                onTogglePanel = { panelOpen = !panelOpen },
+                showTitle = windowWidth >= 420.dp,
+                showPanelToggle = false,
+                onTogglePanel = {},
                 onCloseProject = onBack
             )
 
@@ -134,7 +131,9 @@ fun ViewerScreen(
                 modifier = Modifier.weight(1f).fillMaxWidth()
             ) {
                 Column(
-                    modifier = Modifier.weight(1f).fillMaxHeight()
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
                         .padding(if (fullscreen) 0.dp else gap),
                     verticalArrangement = Arrangement.spacedBy(if (fullscreen) 0.dp else gap)
                 ) {
@@ -178,11 +177,14 @@ fun ViewerScreen(
                     )
                 }
 
-                if (inlinePanel && !fullscreen) {
+                if (!fullscreen) {
                     WorkspaceRightPanel(
-                        modifier = Modifier.width(panelWidth).fillMaxHeight()
+                        modifier = Modifier
+                            .width(panelWidth)
+                            .fillMaxHeight()
                             .padding(top = gap, end = gap, bottom = gap),
-                        canTrack = state.currentBitmap != null && state.playback.currentFrame < state.playback.frameCount - 1,
+                        canTrack = state.currentBitmap != null &&
+                            state.playback.currentFrame < state.playback.frameCount - 1,
                         isTracking = state.isTracking,
                         progress = state.trackingProgress?.fraction ?: 0f,
                         onAutoTrack = viewModel::detectAndTrackToEnd,
@@ -190,30 +192,10 @@ fun ViewerScreen(
                     )
                 }
             }
-        }
 
-        if (panelOpen && !inlinePanel && !fullscreen) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0x99000000))
-                    .pointerInput(Unit) {
-                        detectTapGestures { panelOpen = false }
-                    }
-            )
-
-            WorkspaceRightPanel(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .width(280.dp)
-                    .fillMaxHeight()
-                    .background(PanelBackground)
-                    .padding(10.dp),
-                canTrack = state.currentBitmap != null && state.playback.currentFrame < state.playback.frameCount - 1,
-                isTracking = state.isTracking,
-                progress = state.trackingProgress?.fraction ?: 0f,
-                onAutoTrack = viewModel::detectAndTrackToEnd,
-                onCancelTracking = viewModel::cancelTracking
+            WorkspaceBottomBar(
+                selected = sidebarSelection,
+                onSelect = { sidebarSelection = it }
             )
         }
     }
