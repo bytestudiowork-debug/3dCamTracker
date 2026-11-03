@@ -27,6 +27,8 @@ import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.MyLocation
 import androidx.compose.material.icons.outlined.OpenWith
 import androidx.compose.material.icons.outlined.PhotoCamera
@@ -96,21 +98,12 @@ fun WorkspaceTopBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
 
-        // Logo
-        Box(
-            modifier = Modifier
-                .size(if (compact) 30.dp else 36.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(SelectedItemBackground),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.ViewInAr,
-                contentDescription = null,
-                tint = AccentPrimary,
-                modifier = Modifier.size(if (compact) 18.dp else 22.dp)
-            )
-        }
+        ChromeIconButton(
+            icon = Icons.Outlined.Menu,
+            contentDescription = "Menu",
+            onClick = { menuOpen = true },
+            buttonSize = if (compact) 36.dp else 42.dp
+        )
 
         if (showTitle) {
             Text(
@@ -163,14 +156,6 @@ fun WorkspaceTopBar(
 
         Spacer(Modifier.weight(1f))
 
-        if (showPanelToggle) {
-            ChromeIconButton(
-                icon = Icons.Outlined.Tune,
-                contentDescription = "Tracking panel",
-                onClick = onTogglePanel
-            )
-        }
-
         // Placeholders
         ChromeIconButton(Icons.Outlined.Undo, "Undo", onClick = { })
         ChromeIconButton(Icons.Outlined.Redo, "Redo", onClick = { }, tint = TextDisabled)
@@ -178,23 +163,12 @@ fun WorkspaceTopBar(
 
         Spacer(Modifier.width(if (compact) 4.dp else 10.dp))
 
-        if (compact) {
-            ChromeIconButton(
-                icon = Icons.Outlined.FileUpload,
-                contentDescription = "Export",
-                onClick = { },
-                tint = Color.White,
-                background = AccentPrimary
-            )
-        } else {
-            ChromeButton(
-                text = "Export",
-                icon = Icons.Outlined.FileUpload,
-                filled = true,
-                onClick = { },
-                modifier = Modifier.width(112.dp)
-            )
-        }
+        ChromeIconButton(
+            icon = Icons.Outlined.Share,
+            contentDescription = "Share / Export",
+            onClick = { },
+            tint = TextPrimary
+        )
 
         Box {
             ChromeIconButton(
