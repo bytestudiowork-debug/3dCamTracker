@@ -227,7 +227,7 @@ internal class IncrementalSfMSolver(
                             frameIndex,
                             frameCount,
                             "Registering camera frame",
-                            overallFraction = 0.36f + 0.64f *
+                            overallFraction = 0.36f + 0.32f *
                                 (frameIndex - selected.secondFrame).toFloat() /
                                 (frameCount - selected.secondFrame).coerceAtLeast(1)
                         )
@@ -319,7 +319,7 @@ internal class IncrementalSfMSolver(
                             frameIndex + 1,
                             frameCount,
                             "Registered ${registeredFrames} cameras",
-                            overallFraction = 0.36f + 0.64f *
+                            overallFraction = 0.36f + 0.32f *
                                 (frameIndex + 1 - selected.secondFrame).toFloat() /
                                 (frameCount - selected.secondFrame).coerceAtLeast(1)
                         )
@@ -327,6 +327,113 @@ internal class IncrementalSfMSolver(
                 }
             } finally {
                 previousDescriptors.release()
+            }
+
+            // Run the same map-based registration backwards from the second
+            // initialization camera. This fills frames before the selected pair
+            // and the interval between the pair without inventing translations.
+            trackBuilder.resetToFrame(selected.secondFrame)
+            var reverseDescriptors = secondFrame.descriptors.clone()
+            var reverseKeypoints = secondFrame.keypoints
+            try {
+                for (frameIndex in selected.secondFrame - 1 downTo 0) {
+                    currentCoroutineContext().ensureActive()
+                    onProgress(
+                        CameraTrackingProgress(
+                            frameIndex + 1,
+                            frameCount,
+                            "Registering earlier frames",
+                            overallFraction = 0.68f + 0.32f *
+                                (selected.secondFrame - frameIndex).toFloat() /
+                                selected.secondFrame.coerceAtLeast(1)
+                        )
+                    )
+                    val source = frameProvider(frameIndex)
+                        ?: throw IllegalStateException("Unable to decode frame ${frameIndex + 1}.")
+                    val gray = toGray(source)
+                    val keypointsMat = org.opencv.core.MatOfKeyPoint()
+                    val descriptors = Mat()
+                    try {
+                        val detectionMask = Mat()
+                        try {
+                            orb.detectAndCompute(gray, detectionMask, keypointsMat, descriptors)
+                        } finally {
+                            detectionMask.release()
+                        }
+                        val currentKeypoints = keypointsMat.toArray()
+                        val matches = if (!reverseDescriptors.empty() && !descriptors.empty()) {
+                            verifiedMatches(
+                                reverseDescriptors, reverseKeypoints,
+                                descriptors, currentKeypoints, cameraMatrix, matcher
+                            )
+                        } else emptyList()
+                        totalMatches += matches.size
+                        if (matches.isEmpty()) {
+                            trackBuilder.breakContinuity()
+                        } else {
+                            trackBuilder.addInlierMatchesBackward(
+                                frameIndex, reverseKeypoints, currentKeypoints, matches
+                            )
+                        }
+                        tracks = trackBuilder.build()
+
+                        if (frameIndex == selected.firstFrame) {
+                            diagnostics[frameIndex] = FrameTrackingDiagnostic(
+                                frameIndex, currentKeypoints.size, matches.size,
+                                matches.size, "Initialization reference"
+                            )
+                        } else {
+                            val registration = IncrementalCameraRegistrar.register(
+                                frameIndex = frameIndex,
+                                frameWidth = source.cols(),
+                                frameHeight = source.rows(),
+                                featureTracks = tracks,
+                                landmarks = landmarksByTrack.values.toList(),
+                                cameraMatrix = cameraMatrix
+                            )
+                            totalCorrespondences += registration.correspondenceCount
+                            if (registration.accepted && registration.pose != null) {
+                                poseByFrame[frameIndex] = registration.pose
+                                totalInliers += registration.inlierCount
+                                registeredFrames++
+                                acceptedRegistrationsSinceMapUpdate++
+                                diagnostics[frameIndex] = FrameTrackingDiagnostic(
+                                    frameIndex, currentKeypoints.size, matches.size,
+                                    registration.inlierCount,
+                                    "PnP registered backwards (${registration.inlierCount} inliers)"
+                                )
+                                if (acceptedRegistrationsSinceMapUpdate >= 3) {
+                                    val update = SfMTriangulator.triangulate(
+                                        tracks, poseByFrame.filterNotNull(), cameraMatrix
+                                    )
+                                    update.landmarks.forEach { landmark ->
+                                        val old = landmarksByTrack[landmark.trackId]
+                                        if (old == null ||
+                                            landmark.meanReprojectionErrorPx < old.meanReprojectionErrorPx
+                                        ) landmarksByTrack[landmark.trackId] = landmark
+                                    }
+                                    acceptedRegistrationsSinceMapUpdate = 0
+                                }
+                            } else {
+                                diagnostics[frameIndex] = FrameTrackingDiagnostic(
+                                    frameIndex, currentKeypoints.size, matches.size,
+                                    registration.inlierCount, registration.reason
+                                )
+                            }
+                        }
+
+                        reverseDescriptors.release()
+                        reverseDescriptors = descriptors.clone()
+                        reverseKeypoints = currentKeypoints
+                    } finally {
+                        source.release()
+                        gray.release()
+                        keypointsMat.release()
+                        descriptors.release()
+                    }
+                }
+            } finally {
+                reverseDescriptors.release()
             }
 
             // Flush newly observed tracks once more after the final registered pose.
