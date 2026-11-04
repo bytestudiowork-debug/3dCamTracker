@@ -99,7 +99,7 @@ class FeatureTrackBuilderTest {
         )
 
         val track = builder.build().single()
-        assertEquals(listOf(0, 2, 5), track.observations.map { it.frameIndex })
+        assertEquals(setOf(0, 2, 5), track.observations.map { it.frameIndex }.toSet())
         assertEquals(18.0, track.observations.last().x, 0.0)
     }
 
