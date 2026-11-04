@@ -66,6 +66,15 @@ internal object InitialPairSelector {
                 "Features are concentrated in a small image region"
             candidate.coveredGridCells > policy.gridCellCount ->
                 "Invalid image coverage metric"
+            !candidate.cheiralityRatio.isFinite() ||
+                candidate.cheiralityRatio !in 0.0..1.0 ->
+                "Invalid cheirality metric"
+            !candidate.homographyInlierRatio.isFinite() ||
+                candidate.homographyInlierRatio !in 0.0..1.0 ->
+                "Invalid homography metric"
+            !candidate.forwardMotionRatio.isFinite() ||
+                candidate.forwardMotionRatio !in 0.0..1.0 ->
+                "Invalid forward-motion metric"
             !candidate.medianParallaxDegrees.isFinite() ||
                 candidate.medianParallaxDegrees < policy.minimumMedianParallaxDegrees ->
                 "Insufficient median triangulation parallax"
