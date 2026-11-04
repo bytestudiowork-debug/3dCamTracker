@@ -71,7 +71,7 @@ internal object IncrementalCameraRegistrar {
         val projectedPoints = MatOfPoint2f()
         val rotationMatrix = Mat()
 
-        try {
+        return try {
             objectPoints.fromArray(*points3d.toTypedArray())
             imagePoints.fromArray(*points2d.toTypedArray())
 
