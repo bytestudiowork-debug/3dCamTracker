@@ -34,11 +34,13 @@ data class CameraTrackingProgress(
     /** Number of source frames processed in the current pass. */
     val frameIndex: Int,
     val frameCount: Int,
-    val phase: String
+    val phase: String,
+    val overallFraction: Float? = null
 ) {
     val fraction: Float
-        get() = if (frameCount <= 0) 0f
-        else (frameIndex.toFloat() / frameCount).coerceIn(0f, 1f)
+        get() = overallFraction?.coerceIn(0f, 1f)
+            ?: if (frameCount <= 0) 0f
+            else (frameIndex.toFloat() / frameCount).coerceIn(0f, 1f)
 }
 
 enum class CameraPoseStatus {
