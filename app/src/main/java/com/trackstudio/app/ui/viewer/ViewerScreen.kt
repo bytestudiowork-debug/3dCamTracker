@@ -262,8 +262,6 @@ private fun ViewerPanel(
     verificationSegments: List<TrackingVerificationSegment>,
     showVerificationOverlay: Boolean,
     showTrackPointsOverlay: Boolean,
-    onToggleVerificationOverlay: () -> Unit,
-    onToggleTrackPointsOverlay: () -> Unit,
     isLoading: Boolean,
     errorMessage: String?,
     zoom: Float,
@@ -299,26 +297,6 @@ private fun ViewerPanel(
             showZoomLabel = false,
             modifier = Modifier.fillMaxSize()
         )
-
-        if (verificationSegments.isNotEmpty() || trackingPoints.isNotEmpty()) {
-            OverlayChip(
-                modifier = Modifier.align(Alignment.TopStart).padding(if (compact) 8.dp else 10.dp),
-                compact = compact
-            ) {
-                Text(
-                    text = "3D TEST",
-                    color = if (showVerificationOverlay) AccentPrimary else TextSecondary,
-                    fontSize = if (compact) 10.sp else 11.sp,
-                    modifier = Modifier.clickable(onClick = onToggleVerificationOverlay)
-                )
-                Text(
-                    text = "TRACKS",
-                    color = if (showTrackPointsOverlay) Color(0xFF00E5FF) else TextSecondary,
-                    fontSize = if (compact) 10.sp else 11.sp,
-                    modifier = Modifier.clickable(onClick = onToggleTrackPointsOverlay)
-                )
-            }
-        }
 
         if (!fullscreen) {
             OverlayChip(
