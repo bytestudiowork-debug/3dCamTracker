@@ -116,7 +116,10 @@ internal object OpenCvInitialPairEvaluator {
                     return rejected(firstFrame, secondFrame, "Too few essential-matrix inliers", matchCount)
                 }
 
-                homography.assignHomography(points1, points2, homographyMask)
+                val estimatedHomography = Calib3d.findHomography(
+                    points1, points2, Calib3d.RANSAC, 3.0, homographyMask, 1000, 0.995
+                )
+                estimatedHomography.release()
                 val homographyInliers = if (homographyMask.empty()) 0
                     else Core.countNonZero(homographyMask)
                 val homographyRatio = homographyInliers.toDouble() / matchCount
@@ -222,16 +225,6 @@ internal object OpenCvInitialPairEvaluator {
         }
     }
 
-    private fun Mat.assignHomography(
-        points1: MatOfPoint2f,
-        points2: MatOfPoint2f,
-        mask: Mat
-    ) {
-        val estimated = Calib3d.findHomography(
-            points1, points2, Calib3d.RANSAC, 3.0, mask, 1000, 0.995
-        )
-        estimated.release()
-    }
 
     private fun rejected(
         first: Int,
