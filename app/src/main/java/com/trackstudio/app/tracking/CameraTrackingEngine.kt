@@ -52,6 +52,7 @@ class CameraTrackingEngine(
         val matcher = BFMatcher.create(Core.NORM_HAMMING, false)
         val poses = mutableListOf<CameraPose>()
         val diagnostics = mutableListOf<FrameTrackingDiagnostic>()
+        val featureTrackBuilder = FeatureTrackBuilder()
 
         var previousGray: Mat? = null
         var previousDescriptors: Mat? = null
@@ -110,6 +111,7 @@ class CameraTrackingEngine(
                         if (prevDescriptors == null || prevGray == null ||
                             prevDescriptors.empty() || descriptors.empty()
                         ) {
+                            featureTrackBuilder.breakContinuity()
                             diagnostics += FrameTrackingDiagnostic(
                                 frameIndex, keypoints.rows(), 0, 0,
                                 "Insufficient visual features"
@@ -131,6 +133,7 @@ class CameraTrackingEngine(
 
                                 val previousPoints = mutableListOf<Point>()
                                 val currentPoints = mutableListOf<Point>()
+                                val matchedIndices = mutableListOf<Pair<Int, Int>>()
                                 for (candidate in candidates) {
                                     val pair = candidate.toArray()
                                     if (pair.size >= 2 &&
@@ -143,6 +146,7 @@ class CameraTrackingEngine(
                                         if (a < prevArray.size && b < currArray.size) {
                                             previousPoints += prevArray[a].pt
                                             currentPoints += currArray[b].pt
+                                            matchedIndices += a to b
                                         }
                                     }
                                 }
@@ -185,6 +189,19 @@ class CameraTrackingEngine(
                                                     translation,
                                                     inlierMask
                                                 )
+                                                val previousArray = previousKeypointArray
+                                                if (previousArray != null) {
+                                                    val geometricInliers = matchedIndices.filterIndexed { index, _ ->
+                                                        val maskValue = inlierMask.get(index, 0)
+                                                        maskValue != null && maskValue[0] != 0.0
+                                                    }
+                                                    featureTrackBuilder.addInlierMatches(
+                                                        frameIndex,
+                                                        previousArray,
+                                                        keypoints.toArray(),
+                                                        geometricInliers
+                                                    )
+                                                }
                                             }
                                         } finally {
                                             essentialEstimate.release()
@@ -216,6 +233,7 @@ class CameraTrackingEngine(
                                             solvedPairs++
                                             pairStatus = "Camera motion estimated"
                                         } else {
+                                            featureTrackBuilder.breakContinuity()
                                             pairStatus = "Weak camera motion estimate"
                                         }
                                     } finally {
@@ -277,7 +295,8 @@ class CameraTrackingEngine(
                 totalMatches = totalMatches,
                 totalInliers = totalInliers,
                 inlierRatio = inlierRatio,
-                isCameraMotionEstimated = solvedPairs > 0
+                isCameraMotionEstimated = solvedPairs > 0,
+                featureTracks = featureTrackBuilder.build()
             )
         } finally {
             previousGray?.release()
@@ -340,5 +359,6 @@ data class CameraTrackingResult(
     val totalMatches: Int,
     val totalInliers: Int,
     val inlierRatio: Double,
-    val isCameraMotionEstimated: Boolean
+    val isCameraMotionEstimated: Boolean,
+    val featureTracks: List<CameraFeatureTrack> = emptyList()
 )
