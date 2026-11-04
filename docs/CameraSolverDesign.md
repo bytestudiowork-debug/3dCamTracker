@@ -44,6 +44,14 @@ For each candidate pair:
 
 Choose the best well-conditioned pair, not necessarily the pair with the greatest temporal separation. Keep thresholds resolution-aware and profile-dependent; COLMAP's documented 16-degree initial minimum triangulation angle is a useful reference, not a fixed mobile-video rule.
 
+### Initial-pair scoring implementation contract
+
+The standalone `InitialPairSelector` ranks already-evaluated pair geometry using a hard quality gate followed by a balanced score. Inputs are produced by the OpenCV evaluator and include verified inliers/ratio, 4x4 image-grid coverage, median and upper-quartile parallax, cheirality ratio, homography dominance, and forward-motion ratio. A high match count cannot compensate for weak parallax or spatially concentrated features.
+
+The selector returns no pair when all candidates fail. It does not silently choose the least-bad pair. Its temporal candidate generator is bounded and deterministic; temporal distance schedules the search only and is never treated as geometric quality. Current default thresholds are conservative starting values for mobile footage and must be tuned using synthetic and real clips, not treated as universal constants. COLMAP's desktop initialization defaults are reference points, not copied wholesale.
+
+The selector is a pure policy module with JVM tests. It is not yet wired into `CameraTrackingEngine`; integration requires a bounded feature-frame cache and a two-pass bootstrap so the chosen pair can become the actual reconstruction origin. Until that integration and a consistent-scale map exist, the existing accumulated pairwise trajectory remains provisional and must not feed final export or trusted PnP registration.
+
 ## 3. Incremental camera registration
 
 OpenCV's Android Java API already exposes `solvePnPRansac` and pose refinement, so the first PnP registration stage can be prototyped without waiting for Ceres. Ceres is for joint multi-camera/multi-point optimisation, not a prerequisite for PnP.
