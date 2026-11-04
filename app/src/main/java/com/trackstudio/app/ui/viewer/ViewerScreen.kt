@@ -148,6 +148,7 @@ fun ViewerScreen(
                 ) {
                     ViewerPanel(
                         bitmap = state.currentBitmap,
+                        trackingPoints = state.trackingPointsByFrame[state.playback.currentFrame].orEmpty(),
                         isLoading = state.isLoadingFrame,
                         errorMessage = state.errorMessage,
                         zoom = zoom,
@@ -231,6 +232,7 @@ fun ViewerScreen(
 @Composable
 private fun ViewerPanel(
     bitmap: Bitmap?,
+    trackingPoints: List<com.trackstudio.app.tracking.CameraFeatureObservation>,
     isLoading: Boolean,
     errorMessage: String?,
     zoom: Float,
@@ -257,6 +259,7 @@ private fun ViewerPanel(
     ) {
         ViewerCanvas(
             bitmap = bitmap,
+            trackingPoints = trackingPoints,
             isLoading = isLoading,
             requestedZoom = zoom,
             onZoomChanged = onZoomChanged,

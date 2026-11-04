@@ -48,7 +48,8 @@ data class ViewerUiState(
     val isAutoTracking: Boolean = false,
     val trackingProgress: CameraTrackingProgress? = null,
     val trackingError: String? = null,
-    val trackingSummary: CameraTrackingSummary? = null
+    val trackingSummary: CameraTrackingSummary? = null,
+    val trackingPointsByFrame: Map<Int, List<com.trackstudio.app.tracking.CameraFeatureObservation>> = emptyMap()
 )
 
 class ViewerViewModel(
@@ -57,6 +58,7 @@ class ViewerViewModel(
 
     companion object {
         private const val THUMBNAIL_MAX_DIMENSION = 320
+        private const val MAX_TRACKING_OVERLAY_POINTS = 900
         private const val BACK_WINDOW = 2
         private const val DEFAULT_AHEAD = 3
         private const val MAX_AHEAD = 8
@@ -188,7 +190,7 @@ class ViewerViewModel(
         }
         playbackController.pause()
         trackingJob?.cancel()
-        _uiState.update { it.copy(isAutoTracking = true, trackingProgress = CameraTrackingProgress(0, uris.size, "Preparing footage", 0f, 0, uris.size), trackingError = null, trackingSummary = null) }
+        _uiState.update { it.copy(isAutoTracking = true, trackingProgress = CameraTrackingProgress(0, uris.size, "Preparing footage", 0f, 0, uris.size), trackingError = null, trackingSummary = null, trackingPointsByFrame = emptyMap()) }
         trackingJob = viewModelScope.launch {
             var intrinsics: Mat? = null
             try {
@@ -219,11 +221,25 @@ class ViewerViewModel(
                     },
                     onProgress = { progress -> _uiState.update { it.copy(trackingProgress = progress) } }
                 )
+                val reconstructedTrackIds = result.landmarks.asSequence()
+                    .map { it.trackId }
+                    .toHashSet()
+                val pointsByFrame = result.featureTracks.asSequence()
+                    .filter { it.id in reconstructedTrackIds }
+                    .flatMap { it.observations.asSequence() }
+                    .groupBy { it.frameIndex }
+                    .mapValues { (_, observations) ->
+                        if (observations.size <= MAX_TRACKING_OVERLAY_POINTS) observations
+                        else observations.filterIndexed { index, _ ->
+                            index % ((observations.size + MAX_TRACKING_OVERLAY_POINTS - 1) / MAX_TRACKING_OVERLAY_POINTS) == 0
+                        }.take(MAX_TRACKING_OVERLAY_POINTS)
+                    }
                 _uiState.update { state ->
                     state.copy(
                         isAutoTracking = false,
                         trackingProgress = CameraTrackingProgress(uris.size, uris.size, "Camera solve complete", 1f, uris.size, uris.size),
                         trackingSummary = CameraTrackingSummary(result.registeredCameraCount, result.processedFrames, result.landmarks.size, result.inlierRatio, result.initialPairFrames),
+                        trackingPointsByFrame = pointsByFrame,
                         trackingError = if (result.registeredCameraCount < 3) "Only ${result.registeredCameraCount} cameras registered. The solve may be incomplete; try footage with stronger parallax." else null
                     )
                 }

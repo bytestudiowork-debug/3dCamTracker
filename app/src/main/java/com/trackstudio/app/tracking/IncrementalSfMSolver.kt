@@ -65,6 +65,14 @@ internal class IncrementalSfMSolver(
         )
         require(pairCandidates.isNotEmpty()) { "No initialization frame pairs are available." }
         val candidateFrames = pairCandidates.flatMap { listOf(it.first, it.second) }.toSet()
+        val processedFrameFlags = BooleanArray(frameCount)
+        var processedFrameCount = 0
+        fun markFrameProcessed(index: Int) {
+            if (index in processedFrameFlags.indices && !processedFrameFlags[index]) {
+                processedFrameFlags[index] = true
+                processedFrameCount++
+            }
+        }
         val cache = linkedMapOf<Int, CachedFrame>()
         val orb = ORB.create(maxFeatures.coerceIn(400, 5000))
         val matcher = BFMatcher.create(Core.NORM_HAMMING, false)
@@ -104,13 +112,14 @@ internal class IncrementalSfMSolver(
                 } finally {
                     source.release()
                 }
+                markFrameProcessed(index)
                 onProgress(
                     CameraTrackingProgress(
                         frameIndex = index + 1,
                         frameCount = frameCount,
                         phase = "Analyzing candidate frames",
                         overallFraction = 0.25f * (sampleIndex + 1) / orderedCandidateFrames.size,
-                        completedFrames = 0,
+                        completedFrames = processedFrameCount,
                         totalFrames = frameCount
                     )
                 )
@@ -140,7 +149,7 @@ internal class IncrementalSfMSolver(
                         frameCount = frameCount,
                         phase = "Evaluating camera-pair geometry (${candidateIndex + 1}/${pairCandidates.size})",
                         overallFraction = 0.25f + 0.10f * (candidateIndex + 1) / pairCandidates.size,
-                        completedFrames = 0,
+                        completedFrames = processedFrameCount,
                         totalFrames = frameCount
                     )
                 )
@@ -162,7 +171,7 @@ internal class IncrementalSfMSolver(
                     frameCount,
                     "Initializing 3D camera map",
                     overallFraction = 0.36f,
-                    completedFrames = 2,
+                    completedFrames = processedFrameCount,
                     totalFrames = frameCount
                 )
             )
@@ -213,7 +222,6 @@ internal class IncrementalSfMSolver(
             var totalCorrespondences = geometry.matches.size
             var totalInliers = geometry.inlierCount
             var registeredFrames = 2
-            var completedSolveFrames = 2
             var acceptedRegistrationsSinceMapUpdate = 0
             val diagnostics = MutableList(frameCount) { index ->
                 FrameTrackingDiagnostic(index, 0, 0, 0, "Not registered")
@@ -237,7 +245,7 @@ internal class IncrementalSfMSolver(
                             overallFraction = 0.36f + 0.32f *
                                 (frameIndex - selected.secondFrame).toFloat() /
                                 (frameCount - selected.secondFrame).coerceAtLeast(1),
-                            completedFrames = completedSolveFrames,
+                            completedFrames = processedFrameCount,
                             totalFrames = frameCount
                         )
                     )
@@ -323,7 +331,7 @@ internal class IncrementalSfMSolver(
                         keypointsMat.release()
                         descriptors.release()
                     }
-                    completedSolveFrames++
+                    markFrameProcessed(frameIndex)
                     onProgress(
                         CameraTrackingProgress(
                             frameIndex + 1,
@@ -332,7 +340,7 @@ internal class IncrementalSfMSolver(
                             overallFraction = 0.36f + 0.32f *
                                 (frameIndex + 1 - selected.secondFrame).toFloat() /
                                 (frameCount - selected.secondFrame).coerceAtLeast(1),
-                            completedFrames = completedSolveFrames,
+                            completedFrames = processedFrameCount,
                             totalFrames = frameCount
                         )
                     )
@@ -355,10 +363,10 @@ internal class IncrementalSfMSolver(
                             frameIndex + 1,
                             frameCount,
                             "Registering earlier frames",
-                            overallFraction = 0.68f + 0.32f *
+                            overallFraction = 0.68f + 0.22f *
                                 (selected.secondFrame - frameIndex).toFloat() /
                                 selected.secondFrame.coerceAtLeast(1),
-                            completedFrames = completedSolveFrames,
+                            completedFrames = processedFrameCount,
                             totalFrames = frameCount
                         )
                     )
@@ -439,16 +447,16 @@ internal class IncrementalSfMSolver(
                         reverseDescriptors.release()
                         reverseDescriptors = descriptors.clone()
                         reverseKeypoints = currentKeypoints
-                        if (frameIndex != selected.firstFrame) completedSolveFrames++
+                        markFrameProcessed(frameIndex)
                         onProgress(
                             CameraTrackingProgress(
                                 frameIndex + 1,
                                 frameCount,
                                 "Registered earlier frames",
-                                overallFraction = 0.68f + 0.32f *
+                                overallFraction = 0.68f + 0.22f *
                                     (selected.secondFrame - frameIndex).toFloat() /
                                     selected.secondFrame.coerceAtLeast(1),
-                                completedFrames = completedSolveFrames,
+                                completedFrames = processedFrameCount,
                                 totalFrames = frameCount
                             )
                         )
@@ -509,8 +517,8 @@ internal class IncrementalSfMSolver(
                                 frameIndex + 1,
                                 frameCount,
                                 "Refining camera map (${refinementRound + 1}/2)",
-                                overallFraction = 0.90f + 0.045f *
-                                    (refinementRound + position.toFloat() /
+                                overallFraction = 0.90f + 0.09f *
+                                    (refinementRound + (position + 1).toFloat() /
                                         refinementFrames.size.coerceAtLeast(1)) / 2f,
                                 completedFrames = frameCount,
                                 totalFrames = frameCount

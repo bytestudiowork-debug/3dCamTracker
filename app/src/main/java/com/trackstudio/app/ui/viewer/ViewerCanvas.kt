@@ -2,6 +2,7 @@ package com.trackstudio.app.ui.viewer
 
 import android.graphics.Bitmap
 import android.view.MotionEvent
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -27,6 +28,9 @@ import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalDensity
+import com.trackstudio.app.tracking.CameraFeatureObservation
 import androidx.compose.ui.ExperimentalComposeUiApi
 import com.trackstudio.app.ui.theme.PanelSurface
 import com.trackstudio.app.ui.theme.TextSecondary
@@ -49,6 +53,7 @@ data class ViewerTransform(
 @Composable
 fun ViewerCanvas(
     bitmap: Bitmap?,
+    trackingPoints: List<CameraFeatureObservation> = emptyList(),
     isLoading: Boolean,
     modifier: Modifier = Modifier,
     requestedZoom: Float? = null,
@@ -229,6 +234,34 @@ fun ViewerCanvas(
                         translationY = transform.panY
                     }
             )
+
+            if (trackingPoints.isNotEmpty()) {
+                val pointRadius = with(LocalDensity.current) { 3.dp.toPx() }
+                Canvas(
+                    modifier = Modifier.fillMaxSize().graphicsLayer {
+                        scaleX = transform.zoom
+                        scaleY = transform.zoom
+                        translationX = transform.panX
+                        translationY = transform.panY
+                    }
+                ) {
+                    val fitScale = min(size.width / bitmap.width, size.height / bitmap.height)
+                    val imageLeft = (size.width - bitmap.width * fitScale) * 0.5f
+                    val imageTop = (size.height - bitmap.height * fitScale) * 0.5f
+                    trackingPoints.forEach { point ->
+                        val x = imageLeft + point.x.toFloat() * fitScale
+                        val y = imageTop + point.y.toFloat() * fitScale
+                        if (x >= imageLeft && x <= imageLeft + bitmap.width * fitScale &&
+                            y >= imageTop && y <= imageTop + bitmap.height * fitScale
+                        ) {
+                            val center = Offset(x, y)
+                            drawCircle(Color.Black.copy(alpha = 0.85f), pointRadius + 1.5f, center)
+                            drawCircle(Color(0xFFFFD54F), pointRadius, center)
+                            drawCircle(Color.White, pointRadius * 0.28f, center)
+                        }
+                    }
+                }
+            }
 
             if (showZoomLabel) {
                 Text(
