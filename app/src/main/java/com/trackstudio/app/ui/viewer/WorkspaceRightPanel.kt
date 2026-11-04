@@ -247,6 +247,11 @@ private fun TrackingToolsCard(
             if (summary != null) {
                 Text("${summary.registeredCameras}/${summary.totalFrames} cameras registered · ${summary.landmarkCount} 3D points", color = TextPrimary, fontSize = 11.sp)
                 Text("Inlier ratio ${(summary.inlierRatio * 100).roundToInt()}% · estimated intrinsics", color = TextSecondary, fontSize = 10.sp)
+                Text(
+                    "Mean solve error ${String.format(Locale.US, "%.2f", summary.meanReprojectionErrorPx)} px",
+                    color = if (summary.meanReprojectionErrorPx <= 2.0) AccentSuccess else AccentError,
+                    fontSize = 11.sp
+                )
             }
         }
         SectionDivider()
@@ -258,6 +263,10 @@ private fun TrackingToolsCard(
         if (detailsExpanded) {
             ProjectDetailRow("Registered cameras", summary?.registeredCameras?.toString() ?: "—")
             ProjectDetailRow("3D landmarks", summary?.landmarkCount?.toString() ?: "—")
+            ProjectDetailRow(
+                "Mean reprojection error",
+                summary?.let { "${String.format(Locale.US, "%.2f", it.meanReprojectionErrorPx)} px" } ?: "—"
+            )
             ProjectDetailRow("Initial pair", summary?.initialPairFrames?.let { "${it.first + 1} – ${it.second + 1}" } ?: "—")
         }
     }

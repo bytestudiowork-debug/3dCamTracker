@@ -37,7 +37,14 @@ import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.max
 
-data class CameraTrackingSummary(val registeredCameras: Int, val totalFrames: Int, val landmarkCount: Int, val inlierRatio: Double, val initialPairFrames: Pair<Int, Int>?)
+data class CameraTrackingSummary(
+    val registeredCameras: Int,
+    val totalFrames: Int,
+    val landmarkCount: Int,
+    val inlierRatio: Double,
+    val initialPairFrames: Pair<Int, Int>?,
+    val meanReprojectionErrorPx: Double = 0.0
+)
 
 data class ViewerUiState(
     val playback: PlaybackState = PlaybackState(),
@@ -227,6 +234,10 @@ class ViewerViewModel(
                 val pointsByFrame = result.featureTracks.asSequence()
                     .filter { it.observations.size >= 2 }
                     .flatMap { it.observations.asSequence() }
+                    .filter { observation ->
+                        observation.frameIndex in uris.indices &&
+                            observation.x.isFinite() && observation.y.isFinite()
+                    }
                     .groupBy { it.frameIndex }
                     .mapValues { (_, observations) ->
                         if (observations.size <= MAX_TRACKING_OVERLAY_POINTS) observations
@@ -238,11 +249,24 @@ class ViewerViewModel(
                     state.copy(
                         isAutoTracking = false,
                         trackingProgress = CameraTrackingProgress(uris.size, uris.size, "Camera solve complete", 1f, uris.size, uris.size),
-                        trackingSummary = CameraTrackingSummary(result.registeredCameraCount, result.processedFrames, result.landmarks.size, result.inlierRatio, result.initialPairFrames),
+                        trackingSummary = CameraTrackingSummary(
+                            result.registeredCameraCount,
+                            result.processedFrames,
+                            result.landmarks.size,
+                            result.inlierRatio,
+                            result.initialPairFrames,
+                            result.landmarks.map { it.meanReprojectionErrorPx }
+                                .filter { it.isFinite() }.average().takeIf { it.isFinite() } ?: 0.0
+                        ),
                         trackingPointsByFrame = pointsByFrame,
                         trackingError = if (result.registeredCameraCount < 3) "Only ${result.registeredCameraCount} cameras registered. The solve may be incomplete; try footage with stronger parallax." else null
                     )
                 }
+                // The viewer initially opens on frame 0, which can be before the
+                // selected initialization pair. Jump to the frame with the densest
+                // verified observations so the user sees the solved feature overlay.
+                val firstVisibleTrackFrame = pointsByFrame.maxByOrNull { it.value.size }?.key
+                if (firstVisibleTrackFrame != null) seekTo(firstVisibleTrackFrame)
             } catch (cancelled: CancellationException) {
                 _uiState.update { it.copy(isAutoTracking = false) }
                 throw cancelled

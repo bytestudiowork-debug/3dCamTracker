@@ -300,6 +300,20 @@ private fun ViewerPanel(
             }
         }
 
+        if (trackingPoints.isNotEmpty()) {
+            Text(
+                text = "TRACK POINTS · ${trackingPoints.size}",
+                color = Color(0xFFFFD54F),
+                fontSize = 10.sp,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(10.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xCC0B1220))
+                    .padding(horizontal = 9.dp, vertical = 6.dp)
+            )
+        }
+
         if (errorMessage != null) {
             Text(
                 text = errorMessage,

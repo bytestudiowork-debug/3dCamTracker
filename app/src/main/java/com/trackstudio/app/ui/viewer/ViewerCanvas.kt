@@ -236,7 +236,7 @@ fun ViewerCanvas(
             )
 
             if (trackingPoints.isNotEmpty()) {
-                val pointRadius = with(LocalDensity.current) { 3.dp.toPx() }
+                val pointRadius = with(LocalDensity.current) { 4.dp.toPx() }
                 Canvas(
                     modifier = Modifier.fillMaxSize().graphicsLayer {
                         scaleX = transform.zoom

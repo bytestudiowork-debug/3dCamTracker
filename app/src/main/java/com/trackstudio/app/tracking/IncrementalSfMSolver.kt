@@ -488,10 +488,20 @@ internal class IncrementalSfMSolver(
             val refinementFrames = poseByFrame.indices.filter { index ->
                 index != selected.firstFrame && poseByFrame[index] != null
             }
-            // One bounded refinement pass keeps mobile solve time down; a full
-            // joint bundle-adjustment stage will replace this approximation later.
-            repeat(1) { refinementRound ->
+            repeat(2) { refinementRound ->
                 currentCoroutineContext().ensureActive()
+                val adjustedLandmarks = MobileBundleAdjuster.optimizeLandmarks(
+                    featureTracks = tracks,
+                    landmarks = landmarksByTrack.values.toList(),
+                    poses = poseByFrame.filterNotNull(),
+                    cameraMatrix = cameraMatrix
+                )
+                adjustedLandmarks.forEach { landmark ->
+                    val old = landmarksByTrack[landmark.trackId]
+                    if (old == null || landmark.meanReprojectionErrorPx <= old.meanReprojectionErrorPx) {
+                        landmarksByTrack[landmark.trackId] = landmark
+                    }
+                }
                 for ((position, frameIndex) in refinementFrames.withIndex()) {
                     currentCoroutineContext().ensureActive()
                     val registration = IncrementalCameraRegistrar.register(
@@ -518,7 +528,7 @@ internal class IncrementalSfMSolver(
                             CameraTrackingProgress(
                                 frameIndex + 1,
                                 frameCount,
-                                "Refining camera map",
+                                "Bundle adjustment · refining cameras",
                                 overallFraction = 0.90f + 0.09f *
                                     (position + 1).toFloat() /
                                         refinementFrames.size.coerceAtLeast(1),
@@ -529,6 +539,18 @@ internal class IncrementalSfMSolver(
                     }
                 }
 
+                val postPoseLandmarks = MobileBundleAdjuster.optimizeLandmarks(
+                    featureTracks = tracks,
+                    landmarks = landmarksByTrack.values.toList(),
+                    poses = poseByFrame.filterNotNull(),
+                    cameraMatrix = cameraMatrix
+                )
+                postPoseLandmarks.forEach { landmark ->
+                    val old = landmarksByTrack[landmark.trackId]
+                    if (old == null || landmark.meanReprojectionErrorPx <= old.meanReprojectionErrorPx) {
+                        landmarksByTrack[landmark.trackId] = landmark
+                    }
+                }
                 val refinedMap = SfMTriangulator.triangulate(
                     tracks, poseByFrame.filterNotNull(), cameraMatrix
                 )
