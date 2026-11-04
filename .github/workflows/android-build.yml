@@ -50,6 +50,9 @@ jobs:
       - name: Show Gradle version
         run: ./gradlew --version
 
+      - name: Run tracking engine unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace --no-daemon
+
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace --no-daemon
 
