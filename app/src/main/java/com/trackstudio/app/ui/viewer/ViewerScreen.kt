@@ -300,7 +300,7 @@ private fun ViewerPanel(
             }
         }
 
-        if (trackingPoints.isNotEmpty()) {
+        if (showTrackPointsOverlay && trackingPoints.isNotEmpty()) {
             Text(
                 text = "TRACK POINTS · ${trackingPoints.size}",
                 color = Color(0xFF00E5FF),
