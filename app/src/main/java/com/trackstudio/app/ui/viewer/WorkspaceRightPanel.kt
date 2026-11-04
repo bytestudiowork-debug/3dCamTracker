@@ -242,7 +242,7 @@ private fun TrackingToolsCard(
                     }
                 }
             }
-            if (isAutoTracking) ChromeButton("Cancel Tracking", Icons.Filled.Stop, onClick = onCancelAutoTrack, modifier = Modifier.fillMaxWidth(), height = 40.dp)
+            if (isAutoTracking) ChromeButton(text = "Cancel Tracking", icon = Icons.Filled.Stop, onClick = onCancelAutoTrack, modifier = Modifier.fillMaxWidth(), height = 40.dp)
             if (error != null) Text(error, color = AccentError, fontSize = 11.sp)
             if (summary != null) {
                 Text("${summary.registeredCameras}/${summary.totalFrames} cameras registered · ${summary.landmarkCount} 3D points", color = TextPrimary, fontSize = 11.sp)
