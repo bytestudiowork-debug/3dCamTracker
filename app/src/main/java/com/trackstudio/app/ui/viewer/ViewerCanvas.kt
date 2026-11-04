@@ -236,7 +236,9 @@ fun ViewerCanvas(
             )
 
             if (trackingPoints.isNotEmpty()) {
-                val pointRadius = with(LocalDensity.current) { 4.dp.toPx() }
+                val markerHalfSize = with(LocalDensity.current) { 4.dp.toPx() }
+                val markerStroke = with(LocalDensity.current) { 1.6.dp.toPx() }
+                val markerOutline = with(LocalDensity.current) { 3.2.dp.toPx() }
                 Canvas(
                     modifier = Modifier.fillMaxSize().graphicsLayer {
                         scaleX = transform.zoom
@@ -255,9 +257,30 @@ fun ViewerCanvas(
                             y >= imageTop && y <= imageTop + bitmap.height * fitScale
                         ) {
                             val center = Offset(x, y)
-                            drawCircle(Color.Black.copy(alpha = 0.85f), pointRadius + 1.5f, center)
-                            drawCircle(Color(0xFFFFD54F), pointRadius, center)
-                            drawCircle(Color.White, pointRadius * 0.28f, center)
+                            // Dark outline keeps the cyan crosshair readable on bright and dark footage.
+                            val horizontalStart = Offset(center.x - markerHalfSize, center.y)
+                            val horizontalEnd = Offset(center.x + markerHalfSize, center.y)
+                            val verticalStart = Offset(center.x, center.y - markerHalfSize)
+                            val verticalEnd = Offset(center.x, center.y + markerHalfSize)
+                            listOf(
+                                horizontalStart to horizontalEnd,
+                                verticalStart to verticalEnd
+                            ).forEach { (start, end) ->
+                                drawLine(
+                                    color = Color.Black.copy(alpha = 0.92f),
+                                    start = start,
+                                    end = end,
+                                    strokeWidth = markerOutline,
+                                    cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                )
+                                drawLine(
+                                    color = Color(0xFF00E5FF),
+                                    start = start,
+                                    end = end,
+                                    strokeWidth = markerStroke,
+                                    cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                )
+                            }
                         }
                     }
                 }
