@@ -109,7 +109,9 @@ internal class IncrementalSfMSolver(
                         frameIndex = index + 1,
                         frameCount = frameCount,
                         phase = "Analyzing candidate frames",
-                        overallFraction = 0.25f * (sampleIndex + 1) / orderedCandidateFrames.size
+                        overallFraction = 0.25f * (sampleIndex + 1) / orderedCandidateFrames.size,
+                        completedFrames = 0,
+                        totalFrames = frameCount
                     )
                 )
             }
@@ -137,7 +139,9 @@ internal class IncrementalSfMSolver(
                         frameIndex = frameCount,
                         frameCount = frameCount,
                         phase = "Evaluating camera-pair geometry (${candidateIndex + 1}/${pairCandidates.size})",
-                        overallFraction = 0.25f + 0.10f * (candidateIndex + 1) / pairCandidates.size
+                        overallFraction = 0.25f + 0.10f * (candidateIndex + 1) / pairCandidates.size,
+                        completedFrames = 0,
+                        totalFrames = frameCount
                     )
                 )
             }
@@ -157,7 +161,9 @@ internal class IncrementalSfMSolver(
                     selected.secondFrame + 1,
                     frameCount,
                     "Initializing 3D camera map",
-                    overallFraction = 0.36f
+                    overallFraction = 0.36f,
+                    completedFrames = 2,
+                    totalFrames = frameCount
                 )
             )
             val geometry = estimatePairGeometry(
@@ -207,6 +213,7 @@ internal class IncrementalSfMSolver(
             var totalCorrespondences = geometry.matches.size
             var totalInliers = geometry.inlierCount
             var registeredFrames = 2
+            var completedSolveFrames = 2
             var acceptedRegistrationsSinceMapUpdate = 0
             val diagnostics = MutableList(frameCount) { index ->
                 FrameTrackingDiagnostic(index, 0, 0, 0, "Not registered")
@@ -229,7 +236,9 @@ internal class IncrementalSfMSolver(
                             "Registering camera frame",
                             overallFraction = 0.36f + 0.32f *
                                 (frameIndex - selected.secondFrame).toFloat() /
-                                (frameCount - selected.secondFrame).coerceAtLeast(1)
+                                (frameCount - selected.secondFrame).coerceAtLeast(1),
+                            completedFrames = completedSolveFrames,
+                            totalFrames = frameCount
                         )
                     )
                     val source = frameProvider(frameIndex)
@@ -314,6 +323,7 @@ internal class IncrementalSfMSolver(
                         keypointsMat.release()
                         descriptors.release()
                     }
+                    completedSolveFrames++
                     onProgress(
                         CameraTrackingProgress(
                             frameIndex + 1,
@@ -321,7 +331,9 @@ internal class IncrementalSfMSolver(
                             "Registered ${registeredFrames} cameras",
                             overallFraction = 0.36f + 0.32f *
                                 (frameIndex + 1 - selected.secondFrame).toFloat() /
-                                (frameCount - selected.secondFrame).coerceAtLeast(1)
+                                (frameCount - selected.secondFrame).coerceAtLeast(1),
+                            completedFrames = completedSolveFrames,
+                            totalFrames = frameCount
                         )
                     )
                 }
@@ -345,7 +357,9 @@ internal class IncrementalSfMSolver(
                             "Registering earlier frames",
                             overallFraction = 0.68f + 0.32f *
                                 (selected.secondFrame - frameIndex).toFloat() /
-                                selected.secondFrame.coerceAtLeast(1)
+                                selected.secondFrame.coerceAtLeast(1),
+                            completedFrames = completedSolveFrames,
+                            totalFrames = frameCount
                         )
                     )
                     val source = frameProvider(frameIndex)
@@ -425,6 +439,19 @@ internal class IncrementalSfMSolver(
                         reverseDescriptors.release()
                         reverseDescriptors = descriptors.clone()
                         reverseKeypoints = currentKeypoints
+                        if (frameIndex != selected.firstFrame) completedSolveFrames++
+                        onProgress(
+                            CameraTrackingProgress(
+                                frameIndex + 1,
+                                frameCount,
+                                "Registered earlier frames",
+                                overallFraction = 0.68f + 0.32f *
+                                    (selected.secondFrame - frameIndex).toFloat() /
+                                    selected.secondFrame.coerceAtLeast(1),
+                                completedFrames = completedSolveFrames,
+                                totalFrames = frameCount
+                            )
+                        )
                     } finally {
                         source.release()
                         gray.release()
@@ -472,7 +499,10 @@ internal class IncrementalSfMSolver(
                 tracks, poseByFrame.filterNotNull(), cameraMatrix
             ).stats
             onProgress(CameraTrackingProgress(
-                frameCount, frameCount, "Camera solve complete", overallFraction = 1f
+                frameCount, frameCount, "Camera solve complete",
+                overallFraction = 1f,
+                completedFrames = frameCount,
+                totalFrames = frameCount
             ))
             CameraTrackingResult(
                 poses = denseTimeline,

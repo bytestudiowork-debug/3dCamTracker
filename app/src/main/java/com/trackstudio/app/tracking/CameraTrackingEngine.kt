@@ -35,8 +35,13 @@ data class CameraTrackingProgress(
     val frameIndex: Int,
     val frameCount: Int,
     val phase: String,
-    val overallFraction: Float? = null
+    val overallFraction: Float? = null,
+    val completedFrames: Int = frameIndex,
+    val totalFrames: Int = frameCount
 ) {
+    val frameLabel: String
+        get() = "${completedFrames.coerceIn(0, totalFrames)}/${totalFrames.coerceAtLeast(0)} frames"
+
     val fraction: Float
         get() = overallFraction?.coerceIn(0f, 1f)
             ?: if (frameCount <= 0) 0f
