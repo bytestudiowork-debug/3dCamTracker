@@ -423,7 +423,8 @@ enum class CameraPoseStatus {
     REFERENCE,
     RELATIVE_ESTIMATE,
     PNP_REGISTERED,
-    HELD_LAST_VALID
+    HELD_LAST_VALID,
+    UNREGISTERED
 }
 
 data class CameraPose(
