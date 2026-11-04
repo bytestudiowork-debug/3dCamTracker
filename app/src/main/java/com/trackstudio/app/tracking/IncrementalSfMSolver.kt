@@ -473,6 +473,65 @@ internal class IncrementalSfMSolver(
                 }
             }
 
+            // Two bounded global refinement rounds: re-estimate each registered
+            // camera against the latest shared map, then retriangulate landmarks
+            // using updated camera poses. This reduces incremental drift without
+            // treating independent per-frame pose fits as joint bundle adjustment.
+            val refinementFrames = poseByFrame.indices.filter { index ->
+                index != selected.firstFrame && poseByFrame[index] != null
+            }
+            repeat(2) { refinementRound ->
+                currentCoroutineContext().ensureActive()
+                for ((position, frameIndex) in refinementFrames.withIndex()) {
+                    currentCoroutineContext().ensureActive()
+                    val registration = IncrementalCameraRegistrar.register(
+                        frameIndex = frameIndex,
+                        frameWidth = firstFrame.width,
+                        frameHeight = firstFrame.height,
+                        featureTracks = tracks,
+                        landmarks = landmarksByTrack.values.toList(),
+                        cameraMatrix = cameraMatrix
+                    )
+                    if (registration.accepted && registration.pose != null) {
+                        poseByFrame[frameIndex] = registration.pose
+                        diagnostics[frameIndex] = FrameTrackingDiagnostic(
+                            frameIndex,
+                            diagnostics[frameIndex].detectedFeatures,
+                            diagnostics[frameIndex].matchedFeatures,
+                            registration.inlierCount,
+                            "Refined PnP (${registration.inlierCount} inliers, " +
+                                "median ${"%.2f".format(registration.medianReprojectionErrorPx)} px)"
+                        )
+                    }
+                    if (position % 8 == 0 || position == refinementFrames.lastIndex) {
+                        onProgress(
+                            CameraTrackingProgress(
+                                frameIndex + 1,
+                                frameCount,
+                                "Refining camera map (${refinementRound + 1}/2)",
+                                overallFraction = 0.90f + 0.045f *
+                                    (refinementRound + position.toFloat() /
+                                        refinementFrames.size.coerceAtLeast(1)) / 2f,
+                                completedFrames = frameCount,
+                                totalFrames = frameCount
+                            )
+                        )
+                    }
+                }
+
+                val refinedMap = SfMTriangulator.triangulate(
+                    tracks, poseByFrame.filterNotNull(), cameraMatrix
+                )
+                refinedMap.landmarks.forEach { landmark ->
+                    val old = landmarksByTrack[landmark.trackId]
+                    if (old == null ||
+                        landmark.meanReprojectionErrorPx < old.meanReprojectionErrorPx
+                    ) {
+                        landmarksByTrack[landmark.trackId] = landmark
+                    }
+                }
+            }
+
             val denseTimeline = ArrayList<CameraPose>(frameCount)
             var lastValid: CameraPose? = null
             for (index in 0 until frameCount) {
