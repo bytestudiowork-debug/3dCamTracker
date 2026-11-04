@@ -333,14 +333,16 @@ internal class IncrementalSfMSolver(
                             // CPU cost while allowing the map to grow during the solve.
                             if (acceptedRegistrationsSinceMapUpdate >= 2) {
                                 val validPoses = poseByFrame.filterNotNull()
-                                val update = SfMTriangulator.triangulate(
-                                    tracks, validPoses, cameraMatrix
-                                )
-                                update.landmarks.forEach { landmark ->
-                                    val old = landmarksByTrack[landmark.trackId]
-                                    if (old == null ||
-                                        landmark.meanReprojectionErrorPx < old.meanReprojectionErrorPx
-                                    ) landmarksByTrack[landmark.trackId] = landmark
+                                // Only triangulate tracks not already in the sparse map;
+                                // repeated full-map passes waste CPU on longer clips.
+                                val newTracks = tracks.filter { it.id !in landmarksByTrack }
+                                if (newTracks.isNotEmpty()) {
+                                    val update = SfMTriangulator.triangulate(
+                                        newTracks, validPoses, cameraMatrix
+                                    )
+                                    update.landmarks.forEach { landmark ->
+                                        landmarksByTrack[landmark.trackId] = landmark
+                                    }
                                 }
                                 acceptedRegistrationsSinceMapUpdate = 0
                             }

@@ -55,6 +55,7 @@ import com.trackstudio.app.ui.theme.PanelBorder
 import com.trackstudio.app.ui.theme.TextPrimary
 import com.trackstudio.app.ui.theme.TextSecondary
 import com.trackstudio.app.ui.theme.ViewerBackground
+import com.trackstudio.app.tracking.TrackingVerificationSegment
 import com.trackstudio.app.viewmodel.ViewerViewModel
 
 @Composable
@@ -96,6 +97,8 @@ fun ViewerScreen(
     var zoom by remember { mutableFloatStateOf(1f) }
     var fullscreen by remember { mutableStateOf(false) }
     var panelOpen by remember { mutableStateOf(true) }
+    var showVerificationOverlay by remember { mutableStateOf(true) }
+    var showTrackPointsOverlay by remember { mutableStateOf(false) }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -149,6 +152,11 @@ fun ViewerScreen(
                     ViewerPanel(
                         bitmap = state.currentBitmap,
                         trackingPoints = state.trackingPointsByFrame[state.playback.currentFrame].orEmpty(),
+                        verificationSegments = state.trackingVerificationByFrame[state.playback.currentFrame].orEmpty(),
+                        showVerificationOverlay = showVerificationOverlay,
+                        showTrackPointsOverlay = showTrackPointsOverlay,
+                        onToggleVerificationOverlay = { showVerificationOverlay = !showVerificationOverlay },
+                        onToggleTrackPointsOverlay = { showTrackPointsOverlay = !showTrackPointsOverlay },
                         isLoading = state.isLoadingFrame,
                         errorMessage = state.errorMessage,
                         zoom = zoom,
@@ -233,6 +241,11 @@ fun ViewerScreen(
 private fun ViewerPanel(
     bitmap: Bitmap?,
     trackingPoints: List<com.trackstudio.app.tracking.CameraFeatureObservation>,
+    verificationSegments: List<TrackingVerificationSegment>,
+    showVerificationOverlay: Boolean,
+    showTrackPointsOverlay: Boolean,
+    onToggleVerificationOverlay: () -> Unit,
+    onToggleTrackPointsOverlay: () -> Unit,
     isLoading: Boolean,
     errorMessage: String?,
     zoom: Float,
@@ -259,7 +272,8 @@ private fun ViewerPanel(
     ) {
         ViewerCanvas(
             bitmap = bitmap,
-            trackingPoints = trackingPoints,
+            trackingPoints = if (showTrackPointsOverlay) trackingPoints else emptyList(),
+            trackingVerificationSegments = if (showVerificationOverlay) verificationSegments else emptyList(),
             isLoading = isLoading,
             requestedZoom = zoom,
             onZoomChanged = onZoomChanged,
@@ -267,6 +281,26 @@ private fun ViewerPanel(
             showZoomLabel = false,
             modifier = Modifier.fillMaxSize()
         )
+
+        if (verificationSegments.isNotEmpty() || trackingPoints.isNotEmpty()) {
+            OverlayChip(
+                modifier = Modifier.align(Alignment.TopStart).padding(if (compact) 8.dp else 10.dp),
+                compact = compact
+            ) {
+                Text(
+                    text = "3D TEST",
+                    color = if (showVerificationOverlay) AccentPrimary else TextSecondary,
+                    fontSize = if (compact) 10.sp else 11.sp,
+                    modifier = Modifier.clickable(onClick = onToggleVerificationOverlay)
+                )
+                Text(
+                    text = "TRACKS",
+                    color = if (showTrackPointsOverlay) Color(0xFF00E5FF) else TextSecondary,
+                    fontSize = if (compact) 10.sp else 11.sp,
+                    modifier = Modifier.clickable(onClick = onToggleTrackPointsOverlay)
+                )
+            }
+        }
 
         if (!fullscreen) {
             OverlayChip(

@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalDensity
 import com.trackstudio.app.tracking.CameraFeatureObservation
+import com.trackstudio.app.tracking.TrackingVerificationSegment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import com.trackstudio.app.ui.theme.PanelSurface
 import com.trackstudio.app.ui.theme.TextSecondary
@@ -54,6 +55,7 @@ data class ViewerTransform(
 fun ViewerCanvas(
     bitmap: Bitmap?,
     trackingPoints: List<CameraFeatureObservation> = emptyList(),
+    trackingVerificationSegments: List<TrackingVerificationSegment> = emptyList(),
     isLoading: Boolean,
     modifier: Modifier = Modifier,
     requestedZoom: Float? = null,
@@ -235,7 +237,7 @@ fun ViewerCanvas(
                     }
             )
 
-            if (trackingPoints.isNotEmpty()) {
+            if (trackingPoints.isNotEmpty() || trackingVerificationSegments.isNotEmpty()) {
                 // Compact 3DEqualizer-inspired track reticle: fine arms, a
                 // clear center gap and a tiny center target. Keep dimensions in
                 // screen-independent dp so markers stay unobtrusive on phones.
@@ -255,6 +257,16 @@ fun ViewerCanvas(
                     val fitScale = min(size.width / bitmap.width, size.height / bitmap.height)
                     val imageLeft = (size.width - bitmap.width * fitScale) * 0.5f
                     val imageTop = (size.height - bitmap.height * fitScale) * 0.5f
+                    val verificationStroke = with(LocalDensity.current) { 1.8.dp.toPx() }
+                    trackingVerificationSegments.forEach { segment ->
+                        drawLine(
+                            color = Color(segment.colorArgb),
+                            start = Offset(imageLeft + segment.startX * fitScale, imageTop + segment.startY * fitScale),
+                            end = Offset(imageLeft + segment.endX * fitScale, imageTop + segment.endY * fitScale),
+                            strokeWidth = verificationStroke,
+                            cap = androidx.compose.ui.graphics.StrokeCap.Round
+                        )
+                    }
                     trackingPoints.forEach { point ->
                         val x = imageLeft + point.x.toFloat() * fitScale
                         val y = imageTop + point.y.toFloat() * fitScale

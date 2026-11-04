@@ -13,6 +13,8 @@ import com.trackstudio.app.playback.PlaybackController
 import com.trackstudio.app.playback.PlaybackState
 import com.trackstudio.app.tracking.CameraTrackingEngine
 import com.trackstudio.app.tracking.CameraTrackingProgress
+import com.trackstudio.app.tracking.TrackingVerificationProjector
+import com.trackstudio.app.tracking.TrackingVerificationSegment
 import com.trackstudio.app.tracking.OpenCvRuntime
 import kotlinx.coroutines.withContext
 import org.opencv.android.Utils
@@ -56,7 +58,8 @@ data class ViewerUiState(
     val trackingProgress: CameraTrackingProgress? = null,
     val trackingError: String? = null,
     val trackingSummary: CameraTrackingSummary? = null,
-    val trackingPointsByFrame: Map<Int, List<com.trackstudio.app.tracking.CameraFeatureObservation>> = emptyMap()
+    val trackingPointsByFrame: Map<Int, List<com.trackstudio.app.tracking.CameraFeatureObservation>> = emptyMap(),
+    val trackingVerificationByFrame: Map<Int, List<TrackingVerificationSegment>> = emptyMap()
 )
 
 class ViewerViewModel(
@@ -197,7 +200,7 @@ class ViewerViewModel(
         }
         playbackController.pause()
         trackingJob?.cancel()
-        _uiState.update { it.copy(isAutoTracking = true, trackingProgress = CameraTrackingProgress(0, uris.size, "Preparing footage", 0f, 0, uris.size), trackingError = null, trackingSummary = null, trackingPointsByFrame = emptyMap()) }
+        _uiState.update { it.copy(isAutoTracking = true, trackingProgress = CameraTrackingProgress(0, uris.size, "Preparing footage", 0f, 0, uris.size), trackingError = null, trackingSummary = null, trackingPointsByFrame = emptyMap(), trackingVerificationByFrame = emptyMap()) }
         trackingJob = viewModelScope.launch {
             var intrinsics: Mat? = null
             try {
@@ -245,6 +248,13 @@ class ViewerViewModel(
                             index % ((observations.size + MAX_TRACKING_OVERLAY_POINTS - 1) / MAX_TRACKING_OVERLAY_POINTS) == 0
                         }.take(MAX_TRACKING_OVERLAY_POINTS)
                     }
+                val verificationByFrame = TrackingVerificationProjector.project(
+                    landmarks = result.landmarks,
+                    poses = result.poses,
+                    cameraMatrix = cameraMatrix,
+                    imageWidth = width,
+                    imageHeight = height
+                )
                 _uiState.update { state ->
                     state.copy(
                         isAutoTracking = false,
@@ -259,6 +269,7 @@ class ViewerViewModel(
                                 .filter { it.isFinite() }.average().takeIf { it.isFinite() } ?: 0.0
                         ),
                         trackingPointsByFrame = pointsByFrame,
+                        trackingVerificationByFrame = verificationByFrame,
                         trackingError = if (result.registeredCameraCount < 3) "Only ${result.registeredCameraCount} cameras registered. The solve may be incomplete; try footage with stronger parallax." else null
                     )
                 }
