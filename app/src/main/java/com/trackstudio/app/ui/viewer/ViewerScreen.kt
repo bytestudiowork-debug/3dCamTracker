@@ -99,6 +99,7 @@ fun ViewerScreen(
     var panelOpen by remember { mutableStateOf(true) }
     var showVerificationOverlay by remember { mutableStateOf(true) }
     var showTrackPointsOverlay by remember { mutableStateOf(false) }
+    var activeToolPopup by remember { mutableStateOf<String?>(null) }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -178,6 +179,8 @@ fun ViewerScreen(
                             trackingSummary = state.trackingSummary,
                             onAutoTrack = viewModel::startAutoTrack,
                             onCancelAutoTrack = viewModel::cancelAutoTrack,
+                            onOpen3DTest = { activeToolPopup = "3D Test" },
+                            onOpenTrackerTools = { activeToolPopup = "Tracker Tools" },
                             modifier = Modifier
                                 .width(panelWidth)
                                 .fillMaxHeight()
@@ -205,7 +208,9 @@ fun ViewerScreen(
                         trackingSummary = state.trackingSummary,
                         onAutoTrack = viewModel::startAutoTrack,
                         onCancelAutoTrack = viewModel::cancelAutoTrack,
-                            modifier = Modifier
+                        onOpen3DTest = { activeToolPopup = "3D Test" },
+                        onOpenTrackerTools = { activeToolPopup = "Tracker Tools" },
+                        modifier = Modifier
                             .align(Alignment.CenterEnd)
                             .width(drawerWidth)
                             .fillMaxHeight()
@@ -230,6 +235,21 @@ fun ViewerScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(if (fullscreen) 0.dp else gap)
+            )
+        }
+
+        if (activeToolPopup != null) {
+            TrackingToolPopup(
+                title = activeToolPopup!!,
+                currentFrame = state.playback.currentFrame + 1,
+                frameCount = state.playback.frameCount,
+                trackPointCount = state.trackingPointsByFrame[state.playback.currentFrame].orEmpty().size,
+                verificationLineCount = state.trackingVerificationByFrame[state.playback.currentFrame].orEmpty().size,
+                showCube = showVerificationOverlay,
+                showTracks = showTrackPointsOverlay,
+                onCubeChanged = { showVerificationOverlay = it },
+                onTracksChanged = { showTrackPointsOverlay = it },
+                onDismiss = { activeToolPopup = null }
             )
         }
     }
