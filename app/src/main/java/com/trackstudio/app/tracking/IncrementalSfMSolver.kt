@@ -72,7 +72,8 @@ internal class IncrementalSfMSolver(
         try {
             // Bounded first pass: retain descriptors only for frames participating
             // in the coarse pair schedule, not for every frame in a long sequence.
-            for (index in 0 until frameCount) {
+            val orderedCandidateFrames = candidateFrames.sorted()
+            for ((sampleIndex, index) in orderedCandidateFrames.withIndex()) {
                 currentCoroutineContext().ensureActive()
                 val source = frameProvider(index)
                     ?: throw IllegalStateException("Unable to decode frame ${index + 1}.")
@@ -105,9 +106,9 @@ internal class IncrementalSfMSolver(
                 }
                 onProgress(
                     CameraTrackingProgress(
-                        frameIndex = index + 1,
-                        frameCount = frameCount,
-                        phase = "Analyzing footage"
+                        frameIndex = sampleIndex + 1,
+                        frameCount = orderedCandidateFrames.size,
+                        phase = "Analyzing candidate frames"
                     )
                 )
             }
@@ -190,6 +191,10 @@ internal class IncrementalSfMSolver(
             val initialReconstruction = SfMTriangulator.triangulate(
                 tracks, listOf(referencePose, secondPose), cameraMatrix
             )
+            require(initialReconstruction.landmarks.size >= 30) {
+                "Initial 3D map is too small (${initialReconstruction.landmarks.size} landmarks). " +
+                    "Use footage with stronger camera translation and more static scene texture."
+            }
             val landmarksByTrack = linkedMapOf<Int, CameraLandmark>()
             initialReconstruction.landmarks.forEach { landmarksByTrack[it.trackId] = it }
 
