@@ -700,8 +700,72 @@ internal class IncrementalSfMSolver(
             firstDescriptors, secondDescriptors, firstKeypoints, secondKeypoints, matcher
         )
         if (raw.size < 8) return emptyList()
-        return verifyGeometry(raw, firstKeypoints, secondKeypoints, cameraMatrix, false)
-            ?.matches ?: emptyList()
+        return verifyTrackGeometry(raw, firstKeypoints, secondKeypoints)
+    }
+
+    /**
+     * Verifies 2D feature continuity without requiring recoverPose/cheirality.
+     *
+     * recoverPose is appropriate for initializing a 3D camera pair, but it is
+     * too restrictive for ordinary frame-to-frame tracking: small-baseline,
+     * near-rotation and mostly-planar motion can still have valid 2D tracks.
+     * Use robust epipolar and planar models here; PnP remains the gate for
+     * accepting an actual 3D camera pose.
+     */
+    private fun verifyTrackGeometry(
+        matches: List<Pair<Int, Int>>,
+        firstKeypoints: Array<KeyPoint>,
+        secondKeypoints: Array<KeyPoint>
+    ): List<Pair<Int, Int>> {
+        if (matches.size < 8) return emptyList()
+        val points1 = MatOfPoint2f()
+        val points2 = MatOfPoint2f()
+        val fundamentalMask = Mat()
+        val homographyMask = Mat()
+        var fundamental: Mat? = null
+        var homography: Mat? = null
+        try {
+            points1.fromArray(*matches.map { firstKeypoints[it.first].pt }.toTypedArray())
+            points2.fromArray(*matches.map { secondKeypoints[it.second].pt }.toTypedArray())
+
+            fundamental = Calib3d.findFundamentalMat(
+                points1, points2, Calib3d.FM_RANSAC, 1.5, 0.995, fundamentalMask
+            )
+            homography = Calib3d.findHomography(
+                points1, points2, Calib3d.RANSAC, 3.0, homographyMask
+            )
+
+            fun maskInlierCount(mask: Mat): Int {
+                if (mask.empty() || mask.total().toInt() != matches.size) return 0
+                return (0 until matches.size).count { index ->
+                    val row = if (mask.rows() == matches.size) index else 0
+                    val column = if (mask.rows() == matches.size) 0 else index
+                    mask.get(row, column)?.firstOrNull()?.let { it != 0.0 } == true
+                }
+            }
+
+            val fundamentalInliers = maskInlierCount(fundamentalMask)
+            val homographyInliers = maskInlierCount(homographyMask)
+            val selectedMask = if (homographyInliers > fundamentalInliers) {
+                homographyMask
+            } else {
+                fundamentalMask
+            }
+            if (max(fundamentalInliers, homographyInliers) < 8) return emptyList()
+
+            return matches.filterIndexed { index, _ ->
+                val row = if (selectedMask.rows() == matches.size) index else 0
+                val column = if (selectedMask.rows() == matches.size) 0 else index
+                selectedMask.get(row, column)?.firstOrNull()?.let { it != 0.0 } == true
+            }
+        } finally {
+            points1.release()
+            points2.release()
+            fundamentalMask.release()
+            homographyMask.release()
+            fundamental?.release()
+            homography?.release()
+        }
     }
 
     private fun ratioMatches(
@@ -711,6 +775,9 @@ internal class IncrementalSfMSolver(
         secondKeypoints: Array<KeyPoint>,
         matcher: BFMatcher
     ): List<Pair<Int, Int>> {
+        if (firstDescriptors.empty() || secondDescriptors.empty() ||
+            firstDescriptors.rows() == 0 || secondDescriptors.rows() == 0
+        ) return emptyList()
         val rows = mutableListOf<MatOfDMatch>()
         val result = mutableListOf<Pair<Int, Int>>()
         val usedTrain = HashSet<Int>()
