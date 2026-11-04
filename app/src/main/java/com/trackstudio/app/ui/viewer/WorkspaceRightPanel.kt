@@ -78,6 +78,8 @@ fun WorkspaceRightPanel(
     trackingSummary: CameraTrackingSummary?,
     onAutoTrack: () -> Unit,
     onCancelAutoTrack: () -> Unit,
+    onOpen3DTest: () -> Unit,
+    onOpenTrackerTools: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedTab by remember(projectName) { mutableStateOf("Tracking") }
@@ -120,7 +122,7 @@ fun WorkspaceRightPanel(
 
         when (selectedTab) {
             "Tracking" -> TrackingToolsCard(isAutoTracking, trackingProgress, trackingError, trackingSummary, onAutoTrack, onCancelAutoTrack)
-            "Tools" -> QuickActionsCard()
+            "Tools" -> QuickActionsCard(onOpen3DTest, onOpenTrackerTools)
             else -> ProjectSummaryCard(projectName, fps, frameCount)
         }
     }
@@ -374,33 +376,34 @@ private fun TrackPointsSection() {
 }
 
 @Composable
-private fun QuickActionsCard() {
+private fun QuickActionsCard(
+    onOpen3DTest: () -> Unit,
+    onOpenTrackerTools: () -> Unit
+) {
     PanelCard(modifier = Modifier.fillMaxWidth()) {
-        CollapsibleSection(
-            icon = Icons.Outlined.Schedule,
-            title = "Quick Actions"
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                ChromeButton(
-                    text = "Reset Track",
-                    icon = Icons.Outlined.Refresh,
-                    onClick = { },
-                    modifier = Modifier.weight(1f)
-                )
-
-                ChromeButton(
-                    text = "Clear Points",
-                    icon = Icons.Outlined.DeleteOutline,
-                    onClick = { },
-                    modifier = Modifier.weight(1f)
-                )
-            }
+            ToolEntry("3D Test", "Preview the solved-camera diagnostic cube", Icons.Outlined.ViewInAr, onOpen3DTest)
+            ToolEntry("Tracker Tools", "Inspect feature tracks and overlay visibility", Icons.Outlined.ScatterPlot, onOpenTrackerTools)
         }
+    }
+}
+
+@Composable
+private fun ToolEntry(title: String, subtitle: String, icon: ImageVector, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp))
+            .background(PanelSurfaceRaised).clickable(onClick = onClick).padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = AccentPrimary, modifier = Modifier.size(22.dp))
+        Column(Modifier.weight(1f).padding(start = 10.dp)) {
+            Text(title, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text(subtitle, color = TextSecondary, fontSize = 10.sp)
+        }
+        Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = "Open $title", tint = TextSecondary)
     }
 }
 

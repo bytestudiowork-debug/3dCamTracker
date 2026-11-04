@@ -155,8 +155,6 @@ fun ViewerScreen(
                         verificationSegments = state.trackingVerificationByFrame[state.playback.currentFrame].orEmpty(),
                         showVerificationOverlay = showVerificationOverlay,
                         showTrackPointsOverlay = showTrackPointsOverlay,
-                        onToggleVerificationOverlay = { showVerificationOverlay = !showVerificationOverlay },
-                        onToggleTrackPointsOverlay = { showTrackPointsOverlay = !showTrackPointsOverlay },
                         isLoading = state.isLoadingFrame,
                         errorMessage = state.errorMessage,
                         zoom = zoom,
