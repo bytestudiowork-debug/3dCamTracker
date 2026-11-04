@@ -246,6 +246,7 @@ fun ViewerCanvas(
                 val markerStroke = with(LocalDensity.current) { 0.9.dp.toPx() }
                 val markerOutline = with(LocalDensity.current) { 1.9.dp.toPx() }
                 val centerRadius = with(LocalDensity.current) { 0.65.dp.toPx() }
+                val verificationStroke = with(LocalDensity.current) { 1.8.dp.toPx() }
                 Canvas(
                     modifier = Modifier.fillMaxSize().graphicsLayer {
                         scaleX = transform.zoom
@@ -257,7 +258,6 @@ fun ViewerCanvas(
                     val fitScale = min(size.width / bitmap.width, size.height / bitmap.height)
                     val imageLeft = (size.width - bitmap.width * fitScale) * 0.5f
                     val imageTop = (size.height - bitmap.height * fitScale) * 0.5f
-                    val verificationStroke = with(LocalDensity.current) { 1.8.dp.toPx() }
                     trackingVerificationSegments.forEach { segment ->
                         drawLine(
                             color = Color(segment.colorArgb),
