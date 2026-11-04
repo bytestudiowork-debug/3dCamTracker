@@ -236,9 +236,14 @@ fun ViewerCanvas(
             )
 
             if (trackingPoints.isNotEmpty()) {
-                val markerHalfSize = with(LocalDensity.current) { 4.dp.toPx() }
-                val markerStroke = with(LocalDensity.current) { 1.6.dp.toPx() }
-                val markerOutline = with(LocalDensity.current) { 3.2.dp.toPx() }
+                // Compact 3DEqualizer-inspired track reticle: fine arms, a
+                // clear center gap and a tiny center target. Keep dimensions in
+                // screen-independent dp so markers stay unobtrusive on phones.
+                val markerHalfSize = with(LocalDensity.current) { 2.6.dp.toPx() }
+                val markerGap = with(LocalDensity.current) { 0.75.dp.toPx() }
+                val markerStroke = with(LocalDensity.current) { 0.9.dp.toPx() }
+                val markerOutline = with(LocalDensity.current) { 1.9.dp.toPx() }
+                val centerRadius = with(LocalDensity.current) { 0.65.dp.toPx() }
                 Canvas(
                     modifier = Modifier.fillMaxSize().graphicsLayer {
                         scaleX = transform.zoom
@@ -257,30 +262,44 @@ fun ViewerCanvas(
                             y >= imageTop && y <= imageTop + bitmap.height * fitScale
                         ) {
                             val center = Offset(x, y)
-                            // Dark outline keeps the cyan crosshair readable on bright and dark footage.
-                            val horizontalStart = Offset(center.x - markerHalfSize, center.y)
-                            val horizontalEnd = Offset(center.x + markerHalfSize, center.y)
-                            val verticalStart = Offset(center.x, center.y - markerHalfSize)
-                            val verticalEnd = Offset(center.x, center.y + markerHalfSize)
-                            listOf(
-                                horizontalStart to horizontalEnd,
-                                verticalStart to verticalEnd
-                            ).forEach { (start, end) ->
+                            // Four separated arms keep the exact feature center visible,
+                            // similar to a compact match-point reticle used in 3D trackers.
+                            val arms = listOf(
+                                Offset(center.x - markerHalfSize, center.y) to
+                                    Offset(center.x - markerGap, center.y),
+                                Offset(center.x + markerGap, center.y) to
+                                    Offset(center.x + markerHalfSize, center.y),
+                                Offset(center.x, center.y - markerHalfSize) to
+                                    Offset(center.x, center.y - markerGap),
+                                Offset(center.x, center.y + markerGap) to
+                                    Offset(center.x, center.y + markerHalfSize)
+                            )
+                            arms.forEach { (start, end) ->
                                 drawLine(
                                     color = Color.Black.copy(alpha = 0.92f),
                                     start = start,
                                     end = end,
                                     strokeWidth = markerOutline,
-                                    cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                    cap = androidx.compose.ui.graphics.StrokeCap.Square
                                 )
                                 drawLine(
                                     color = Color(0xFF00E5FF),
                                     start = start,
                                     end = end,
                                     strokeWidth = markerStroke,
-                                    cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                    cap = androidx.compose.ui.graphics.StrokeCap.Square
                                 )
                             }
+                            drawCircle(
+                                color = Color.Black.copy(alpha = 0.95f),
+                                radius = centerRadius + markerStroke,
+                                center = center
+                            )
+                            drawCircle(
+                                color = Color(0xFF00E5FF),
+                                radius = centerRadius,
+                                center = center
+                            )
                         }
                     }
                 }

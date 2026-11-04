@@ -731,10 +731,6 @@ internal class IncrementalSfMSolver(
             fundamental = Calib3d.findFundamentalMat(
                 points1, points2, Calib3d.FM_RANSAC, 1.5, 0.995, fundamentalMask
             )
-            homography = Calib3d.findHomography(
-                points1, points2, Calib3d.RANSAC, 3.0, homographyMask
-            )
-
             fun maskInlierCount(mask: Mat): Int {
                 if (mask.empty() || mask.total().toInt() != matches.size) return 0
                 return (0 until matches.size).count { index ->
@@ -745,6 +741,16 @@ internal class IncrementalSfMSolver(
             }
 
             val fundamentalInliers = maskInlierCount(fundamentalMask)
+            // Fundamental RANSAC is the normal fast path. Only pay for a second
+            // homography RANSAC when epipolar verification is weak; this retains
+            // planar/near-planar recovery without doubling the cost on most frames.
+            val strongFundamentalModel = fundamentalInliers >=
+                max(16, (matches.size * 0.45f).toInt())
+            if (!strongFundamentalModel) {
+                homography = Calib3d.findHomography(
+                    points1, points2, Calib3d.RANSAC, 3.0, homographyMask
+                )
+            }
             val homographyInliers = maskInlierCount(homographyMask)
             val selectedMask = if (homographyInliers > fundamentalInliers) {
                 homographyMask
