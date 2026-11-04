@@ -200,7 +200,9 @@ internal class FeatureTrackBuilder {
     }
 
     fun breakContinuity() {
-        previousAssignments.clear()
+        // Do not clear the map stored in assignmentsByFrame. A recovery pass
+        // may still need those keyframe-to-track IDs after continuity is lost.
+        previousAssignments = mutableMapOf()
     }
 
     fun build(minimumObservations: Int = 2): List<CameraFeatureTrack> =
