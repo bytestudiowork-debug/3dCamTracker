@@ -134,7 +134,7 @@ internal class IncrementalSfMSolver(
                 }
                 onProgress(
                     CameraTrackingProgress(
-                        frameIndex = pair.second + 1,
+                        frameIndex = frameCount,
                         frameCount = frameCount,
                         phase = "Evaluating camera-pair geometry (${candidateIndex + 1}/${pairCandidates.size})",
                         overallFraction = 0.25f + 0.10f * (candidateIndex + 1) / pairCandidates.size
@@ -204,6 +204,7 @@ internal class IncrementalSfMSolver(
             var previousDescriptors = secondFrame.descriptors.clone()
             var previousKeypoints = secondFrame.keypoints
             var totalMatches = geometry.matches.size
+            var totalCorrespondences = geometry.matches.size
             var totalInliers = geometry.inlierCount
             var registeredFrames = 2
             var acceptedRegistrationsSinceMapUpdate = 0
@@ -269,6 +270,7 @@ internal class IncrementalSfMSolver(
                             landmarks = landmarksByTrack.values.toList(),
                             cameraMatrix = cameraMatrix
                         )
+                        totalCorrespondences += registration.correspondenceCount
                         if (registration.accepted && registration.pose != null) {
                             poseByFrame[frameIndex] = registration.pose
                             totalInliers += registration.inlierCount
@@ -358,7 +360,7 @@ internal class IncrementalSfMSolver(
                 }
             }
 
-            val allMatches = max(1, totalMatches)
+            val allCorrespondences = max(1, totalCorrespondences)
             val finalStats = SfMTriangulator.triangulate(
                 tracks, poseByFrame.filterNotNull(), cameraMatrix
             ).stats
@@ -372,7 +374,7 @@ internal class IncrementalSfMSolver(
                 solvedFramePairs = registeredFrames - 1,
                 totalMatches = totalMatches,
                 totalInliers = totalInliers,
-                inlierRatio = totalInliers.toDouble() / allMatches,
+                inlierRatio = (totalInliers.toDouble() / allCorrespondences).coerceIn(0.0, 1.0),
                 isCameraMotionEstimated = registeredFrames >= 2,
                 featureTracks = tracks,
                 landmarks = landmarksByTrack.values.toList(),
