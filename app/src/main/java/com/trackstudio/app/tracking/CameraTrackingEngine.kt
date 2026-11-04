@@ -161,7 +161,7 @@ class CameraTrackingEngine(
                                         val prevArray = previousKeypointArray ?: continue
                                         if (a < prevArray.size && b < currentKeypointArray.size) {
                                             previousPoints += prevArray[a].pt
-                                            currentPoints += currArray[b].pt
+                                            currentPoints += currentKeypointArray[b].pt
                                             matchedIndices += a to b
                                         }
                                     }
