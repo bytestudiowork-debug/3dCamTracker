@@ -82,7 +82,12 @@ internal class IncrementalSfMSolver(
                         val keypoints = org.opencv.core.MatOfKeyPoint()
                         val descriptors = Mat()
                         try {
-                            orb.detectAndCompute(gray, Mat(), keypoints, descriptors)
+                            val detectionMask = Mat()
+                            try {
+                                orb.detectAndCompute(gray, detectionMask, keypoints, descriptors)
+                            } finally {
+                                detectionMask.release()
+                            }
                             cache[index] = CachedFrame(
                                 keypoints.toArray(), descriptors,
                                 source.cols(), source.rows()
@@ -221,7 +226,12 @@ internal class IncrementalSfMSolver(
                     val keypointsMat = org.opencv.core.MatOfKeyPoint()
                     val descriptors = Mat()
                     try {
-                        orb.detectAndCompute(gray, Mat(), keypointsMat, descriptors)
+                        val detectionMask = Mat()
+                        try {
+                            orb.detectAndCompute(gray, detectionMask, keypointsMat, descriptors)
+                        } finally {
+                            detectionMask.release()
+                        }
                         val currentKeypoints = keypointsMat.toArray()
                         val matches = if (!previousDescriptors.empty() && !descriptors.empty()) {
                             verifiedMatches(
