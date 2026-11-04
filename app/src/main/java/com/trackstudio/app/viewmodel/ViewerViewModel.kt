@@ -221,11 +221,11 @@ class ViewerViewModel(
                     },
                     onProgress = { progress -> _uiState.update { it.copy(trackingProgress = progress) } }
                 )
-                val reconstructedTrackIds = result.landmarks.asSequence()
-                    .map { it.trackId }
-                    .toHashSet()
+                // Display every persistent, geometrically verified 2D feature track.
+                // Requiring a successfully triangulated 3D landmark hid all points on
+                // clips where the sparse map was valid but conservative.
                 val pointsByFrame = result.featureTracks.asSequence()
-                    .filter { it.id in reconstructedTrackIds }
+                    .filter { it.observations.size >= 2 }
                     .flatMap { it.observations.asSequence() }
                     .groupBy { it.frameIndex }
                     .mapValues { (_, observations) ->

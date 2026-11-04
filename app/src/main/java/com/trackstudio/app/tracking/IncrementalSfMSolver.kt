@@ -488,7 +488,9 @@ internal class IncrementalSfMSolver(
             val refinementFrames = poseByFrame.indices.filter { index ->
                 index != selected.firstFrame && poseByFrame[index] != null
             }
-            repeat(2) { refinementRound ->
+            // One bounded refinement pass keeps mobile solve time down; a full
+            // joint bundle-adjustment stage will replace this approximation later.
+            repeat(1) { refinementRound ->
                 currentCoroutineContext().ensureActive()
                 for ((position, frameIndex) in refinementFrames.withIndex()) {
                     currentCoroutineContext().ensureActive()
@@ -516,10 +518,10 @@ internal class IncrementalSfMSolver(
                             CameraTrackingProgress(
                                 frameIndex + 1,
                                 frameCount,
-                                "Refining camera map (${refinementRound + 1}/2)",
+                                "Refining camera map",
                                 overallFraction = 0.90f + 0.09f *
-                                    (refinementRound + (position + 1).toFloat() /
-                                        refinementFrames.size.coerceAtLeast(1)) / 2f,
+                                    (position + 1).toFloat() /
+                                        refinementFrames.size.coerceAtLeast(1),
                                 completedFrames = frameCount,
                                 totalFrames = frameCount
                             )
