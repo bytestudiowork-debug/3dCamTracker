@@ -12,9 +12,9 @@ import kotlin.math.sqrt
 /**
  * Initial sparse two-view triangulation stage.
  *
- * Uses the first and last observation of each track and the estimated
- * world-to-camera poses. Monocular translation scale is arbitrary at this
- * stage; landmarks are therefore reconstruction-relative, not metric.
+ * Selects the observation pair with the widest camera-center baseline,
+ * triangulates from that pair, then validates the point against every
+ * available observation. Monocular translation scale remains arbitrary.
  */
 internal object SfMTriangulator {
 
@@ -35,23 +35,43 @@ internal object SfMTriangulator {
                 rejectedShort++
                 continue
             }
-            val first = track.observations.first()
-            val last = track.observations.last()
-            if (first.frameIndex == last.frameIndex) {
-                rejectedShort++
-                continue
+            val validObservations = track.observations.mapNotNull { observation ->
+                poseByFrame[observation.frameIndex]?.let { observation to it }
             }
-            val firstPose = poseByFrame[first.frameIndex]
-            val lastPose = poseByFrame[last.frameIndex]
-            if (firstPose == null || lastPose == null) {
+            if (validObservations.size < 2) {
                 rejectedMissingPose++
                 continue
             }
 
+            // A wider camera-center baseline generally provides stronger depth
+            // constraints than blindly selecting the first and last timestamps.
+            var selectedPair: Pair<Pair<CameraFeatureObservation, CameraPose>, Pair<CameraFeatureObservation, CameraPose>>? = null
+            var widestBaselineSquared = -1.0
+            for (firstIndex in 0 until validObservations.lastIndex) {
+                for (lastIndex in firstIndex + 1 until validObservations.size) {
+                    val firstCandidate = validObservations[firstIndex]
+                    val lastCandidate = validObservations[lastIndex]
+                    val baselineSquared = cameraCenterDistanceSquared(
+                        firstCandidate.second, lastCandidate.second
+                    )
+                    if (baselineSquared > widestBaselineSquared) {
+                        widestBaselineSquared = baselineSquared
+                        selectedPair = firstCandidate to lastCandidate
+                    }
+                }
+            }
+            val pair = selectedPair
+            if (pair == null || widestBaselineSquared < 1e-10) {
+                rejectedGeometry++
+                continue
+            }
+            val (firstObservation, firstPose) = pair.first
+            val (lastObservation, lastPose) = pair.second
+
             val projection1 = projectionMatrix(cameraMatrix, firstPose)
             val projection2 = projectionMatrix(cameraMatrix, lastPose)
-            val image1 = MatOfPoint2f(Point(first.x, first.y))
-            val image2 = MatOfPoint2f(Point(last.x, last.y))
+            val image1 = MatOfPoint2f(Point(firstObservation.x, firstObservation.y))
+            val image2 = MatOfPoint2f(Point(lastObservation.x, lastObservation.y))
             val homogeneous = Mat()
 
             try {
@@ -81,16 +101,28 @@ internal object SfMTriangulator {
                 }
 
                 val point = doubleArrayOf(x, y, z)
-                val cameraPoint1 = transform(firstPose, point)
-                val cameraPoint2 = transform(lastPose, point)
-                if (cameraPoint1[2] <= 1e-6 || cameraPoint2[2] <= 1e-6) {
+                var reprojectionErrorSum = 0.0
+                var validProjectionCount = 0
+                var hasNegativeDepth = false
+                for ((observation, pose) in validObservations) {
+                    val cameraPoint = transform(pose, point)
+                    if (cameraPoint[2] <= 1e-6) {
+                        hasNegativeDepth = true
+                        break
+                    }
+                    val error = reprojectionError(cameraMatrix, cameraPoint, observation)
+                    if (!error.isFinite()) {
+                        hasNegativeDepth = true
+                        break
+                    }
+                    reprojectionErrorSum += error
+                    validProjectionCount++
+                }
+                if (hasNegativeDepth || validProjectionCount < 2) {
                     rejectedGeometry++
                     continue
                 }
-
-                val error1 = reprojectionError(cameraMatrix, cameraPoint1, first)
-                val error2 = reprojectionError(cameraMatrix, cameraPoint2, last)
-                val meanError = (error1 + error2) * 0.5
+                val meanError = reprojectionErrorSum / validProjectionCount
                 if (!meanError.isFinite() || meanError > maximumReprojectionErrorPx) {
                     rejectedGeometry++
                     continue
@@ -125,6 +157,25 @@ internal object SfMTriangulator {
         )
     }
 
+    private fun cameraCenterDistanceSquared(first: CameraPose, second: CameraPose): Double {
+        fun center(pose: CameraPose): DoubleArray {
+            val r = pose.rotation
+            val t = pose.translation
+            // Camera center in world coordinates: C = -R^T * t.
+            return doubleArrayOf(
+                -(r[0] * t[0] + r[3] * t[1] + r[6] * t[2]),
+                -(r[1] * t[0] + r[4] * t[1] + r[7] * t[2]),
+                -(r[2] * t[0] + r[5] * t[1] + r[8] * t[2])
+            )
+        }
+        val a = center(first)
+        val b = center(second)
+        val dx = a[0] - b[0]
+        val dy = a[1] - b[1]
+        val dz = a[2] - b[2]
+        return dx * dx + dy * dy + dz * dz
+    }
+
     private fun projectionMatrix(cameraMatrix: Mat, pose: CameraPose): Mat {
         val extrinsic = Mat(3, 4, CvType.CV_64F)
         val values = DoubleArray(12)
@@ -136,8 +187,13 @@ internal object SfMTriangulator {
         }
         extrinsic.put(0, 0, *values)
         val projection = Mat()
-        Core.gemm(cameraMatrix, extrinsic, 1.0, Mat(), 0.0, projection)
-        extrinsic.release()
+        val zero = Mat.zeros(3, 4, CvType.CV_64F)
+        try {
+            Core.gemm(cameraMatrix, extrinsic, 1.0, zero, 0.0, projection)
+        } finally {
+            zero.release()
+            extrinsic.release()
+        }
         return projection
     }
 
