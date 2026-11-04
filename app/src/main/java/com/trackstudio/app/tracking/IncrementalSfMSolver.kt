@@ -279,7 +279,7 @@ internal class IncrementalSfMSolver(
                         }
                         tracks = trackBuilder.build()
 
-                        val registration = IncrementalCameraRegistrar.register(
+                        var registration = IncrementalCameraRegistrar.register(
                             frameIndex = frameIndex,
                             frameWidth = source.cols(),
                             frameHeight = source.rows(),
@@ -287,6 +287,35 @@ internal class IncrementalSfMSolver(
                             landmarks = landmarksByTrack.values.toList(),
                             cameraMatrix = cameraMatrix
                         )
+                        // If adjacent-frame tracking lost the seed-map features, try
+                        // re-localizing against the initialization keyframe before rejecting
+                        // this camera. This is a recovery attempt, not a relaxed PnP gate.
+                        if (!registration.accepted &&
+                            !secondFrame.descriptors.empty() && !descriptors.empty()
+                        ) {
+                            val anchorMatches = verifiedMatches(
+                                secondFrame.descriptors, secondFrame.keypoints,
+                                descriptors, currentKeypoints, cameraMatrix, matcher
+                            )
+                            if (anchorMatches.isNotEmpty()) {
+                                trackBuilder.addInlierMatchesFromFrame(
+                                    selected.secondFrame, frameIndex,
+                                    secondFrame.keypoints, currentKeypoints, anchorMatches
+                                )
+                                tracks = trackBuilder.build()
+                                val recovered = IncrementalCameraRegistrar.register(
+                                    frameIndex = frameIndex,
+                                    frameWidth = source.cols(),
+                                    frameHeight = source.rows(),
+                                    featureTracks = tracks,
+                                    landmarks = landmarksByTrack.values.toList(),
+                                    cameraMatrix = cameraMatrix
+                                )
+                                if (recovered.accepted ||
+                                    recovered.correspondenceCount > registration.correspondenceCount
+                                ) registration = recovered
+                            }
+                        }
                         totalCorrespondences += registration.correspondenceCount
                         if (registration.accepted && registration.pose != null) {
                             poseByFrame[frameIndex] = registration.pose
@@ -302,7 +331,7 @@ internal class IncrementalSfMSolver(
 
                             // Triangulate periodically, not after every frame. This bounds
                             // CPU cost while allowing the map to grow during the solve.
-                            if (acceptedRegistrationsSinceMapUpdate >= 3) {
+                            if (acceptedRegistrationsSinceMapUpdate >= 2) {
                                 val validPoses = poseByFrame.filterNotNull()
                                 val update = SfMTriangulator.triangulate(
                                     tracks, validPoses, cameraMatrix
@@ -405,7 +434,7 @@ internal class IncrementalSfMSolver(
                                 matches.size, "Initialization reference"
                             )
                         } else {
-                            val registration = IncrementalCameraRegistrar.register(
+                            var registration = IncrementalCameraRegistrar.register(
                                 frameIndex = frameIndex,
                                 frameWidth = source.cols(),
                                 frameHeight = source.rows(),
@@ -413,6 +442,34 @@ internal class IncrementalSfMSolver(
                                 landmarks = landmarksByTrack.values.toList(),
                                 cameraMatrix = cameraMatrix
                             )
+                            // Backward recovery uses the same initialization keyframe,
+                            // so a missed adjacent match does not permanently orphan IDs.
+                            if (!registration.accepted &&
+                                !secondFrame.descriptors.empty() && !descriptors.empty()
+                            ) {
+                                val anchorMatches = verifiedMatches(
+                                    secondFrame.descriptors, secondFrame.keypoints,
+                                    descriptors, currentKeypoints, cameraMatrix, matcher
+                                )
+                                if (anchorMatches.isNotEmpty()) {
+                                    trackBuilder.addInlierMatchesFromFrame(
+                                        selected.secondFrame, frameIndex,
+                                        secondFrame.keypoints, currentKeypoints, anchorMatches
+                                    )
+                                    tracks = trackBuilder.build()
+                                    val recovered = IncrementalCameraRegistrar.register(
+                                        frameIndex = frameIndex,
+                                        frameWidth = source.cols(),
+                                        frameHeight = source.rows(),
+                                        featureTracks = tracks,
+                                        landmarks = landmarksByTrack.values.toList(),
+                                        cameraMatrix = cameraMatrix
+                                    )
+                                    if (recovered.accepted ||
+                                        recovered.correspondenceCount > registration.correspondenceCount
+                                    ) registration = recovered
+                                }
+                            }
                             totalCorrespondences += registration.correspondenceCount
                             if (registration.accepted && registration.pose != null) {
                                 poseByFrame[frameIndex] = registration.pose

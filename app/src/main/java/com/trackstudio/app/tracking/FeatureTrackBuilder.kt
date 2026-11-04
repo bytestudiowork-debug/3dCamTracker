@@ -157,6 +157,48 @@ internal class FeatureTrackBuilder {
         previousAssignments = currentAssignments
     }
 
+
+    /**
+     * Reconnects current observations directly to a known keyframe.
+     * This is a recovery path when adjacent-frame matching loses continuity.
+     * Only IDs already established at the source frame are reused.
+     */
+    fun addInlierMatchesFromFrame(
+        sourceFrame: Int,
+        frameIndex: Int,
+        sourceKeypoints: Array<KeyPoint>,
+        currentKeypoints: Array<KeyPoint>,
+        matches: List<Pair<Int, Int>>
+    ) {
+        require(sourceFrame >= 0 && frameIndex >= 0 && sourceFrame != frameIndex)
+        val sourceAssignments = assignmentsByFrame[sourceFrame] ?: return
+        val currentAssignments = assignmentsByFrame[frameIndex]?.toMutableMap() ?: mutableMapOf()
+        val usedTrackIds = currentAssignments.values.toMutableSet()
+
+        for ((sourceIndex, currentIndex) in matches) {
+            if (sourceIndex !in sourceKeypoints.indices ||
+                currentIndex !in currentKeypoints.indices ||
+                currentIndex in currentAssignments
+            ) continue
+            val trackId = sourceAssignments[sourceIndex] ?: continue
+            if (!usedTrackIds.add(trackId)) continue
+
+            val observations = tracks[trackId] ?: continue
+            if (observations.any { it.frameIndex == frameIndex }) continue
+            val observation = CameraFeatureObservation(
+                frameIndex,
+                currentKeypoints[currentIndex].pt.x,
+                currentKeypoints[currentIndex].pt.y
+            )
+            val insertAt = observations.indexOfFirst { it.frameIndex > frameIndex }
+            if (insertAt < 0) observations.add(observation)
+            else observations.add(insertAt, observation)
+            currentAssignments[currentIndex] = trackId
+        }
+
+        assignmentsByFrame[frameIndex] = currentAssignments
+    }
+
     fun breakContinuity() {
         previousAssignments.clear()
     }
