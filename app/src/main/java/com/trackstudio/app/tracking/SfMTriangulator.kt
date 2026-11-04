@@ -53,7 +53,10 @@ internal object SfMTriangulator {
             // geometric observation. Never use it to triangulate landmarks.
             val validObservations = track.observations.mapNotNull { observation ->
                 poseByFrame[observation.frameIndex]
-                    ?.takeIf { it.status != CameraPoseStatus.HELD_LAST_VALID }
+                    ?.takeIf {
+                        it.status != CameraPoseStatus.HELD_LAST_VALID &&
+                            it.status != CameraPoseStatus.UNREGISTERED
+                    }
                     ?.let { observation to it }
             }
             if (validObservations.size < 2) {
