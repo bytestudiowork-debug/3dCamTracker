@@ -62,7 +62,8 @@ internal object SfMTriangulator {
                     rejectedGeometry++
                     continue
                 }
-                val wData = homogeneous.get(3, 0) ?: run {
+                val wData = homogeneous.get(3, 0)
+                if (wData == null || wData.isEmpty()) {
                     rejectedGeometry++
                     continue
                 }
@@ -133,7 +134,7 @@ internal object SfMTriangulator {
             }
             values[row * 4 + 3] = pose.translation[row]
         }
-        extrinsic.put(0, 0, values)
+        extrinsic.put(0, 0, *values)
         val projection = Mat()
         Core.gemm(cameraMatrix, extrinsic, 1.0, Mat(), 0.0, projection)
         extrinsic.release()
