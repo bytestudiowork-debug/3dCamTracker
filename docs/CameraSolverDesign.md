@@ -46,6 +46,8 @@ Choose the best well-conditioned pair, not necessarily the pair with the greates
 
 ## 3. Incremental camera registration
 
+OpenCV's Android Java API already exposes `solvePnPRansac` and pose refinement, so the first PnP registration stage can be prototyped without waiting for Ceres. Ceres is for joint multi-camera/multi-point optimisation, not a prerequisite for PnP.
+
 After initial two-view reconstruction, register subsequent selected frames against the existing 3D map:
 
 1. Associate 2D features with existing 3D landmarks through persistent tracks.
@@ -131,6 +133,7 @@ Reject or warn on pure rotation, insufficient parallax, severe blur, low texture
 
 ## Research references
 
+- OpenCV 4.x Java Calib3d PnP-RANSAC and pose refinement API: https://docs.opencv.org/4.11.0/javadoc/org/opencv/calib3d/Calib3d.html
 - COLMAP incremental mapper options and methods: https://github.com/colmap/colmap/blob/main/src/colmap/sfm/incremental_mapper.h
 - COLMAP incremental mapper implementation (candidate ranking, local bundle selection): https://github.com/colmap/colmap/blob/main/src/colmap/sfm/incremental_mapper_impl.cc
 - COLMAP FAQ (incremental/global SfM trade-offs, intrinsics, BA runtime controls): https://colmap.github.io/faq.html
