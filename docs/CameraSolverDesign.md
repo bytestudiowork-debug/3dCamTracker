@@ -87,6 +87,10 @@ Gauge constraints are mandatory:
 
 Do not apply an aggressive post-solve smoothing filter to hide bad geometry. If a temporal smoothness prior is used, make it a weak, robust acceleration prior and keep reprojection evidence dominant.
 
+### Ceres on Android
+
+Ceres 2.2 is compatible in principle with this project's C++17, CMake 3.22.1, and NDK r27 baseline. Its Android build requires Eigen and Abseil; those must be cross-compiled for each ABI and packaged correctly. Start with SuiteSparse disabled: Ceres documents it as optional, and the required SuiteSparse components can impose GPL/commercial licensing implications. Build only required solver components, disable tests/examples/benchmarks, strip native symbols, and measure APK size and CI build time before adopting it. Begin with Ceres' Eigen-based iterative Schur path; do not pull in SuiteSparse merely for a theoretical speed gain. Keep a pure OpenCV/Eigen fallback or a feature flag until Android arm64 and armeabi-v7a builds are verified.
+
 ## 5. Dense, smooth camera output
 
 The reconstruction's sparse keyframe poses are not the deliverable animation. Build a dense pose track:
@@ -131,4 +135,5 @@ Reject or warn on pure rotation, insufficient parallax, severe blur, low texture
 - COLMAP incremental mapper implementation (candidate ranking, local bundle selection): https://github.com/colmap/colmap/blob/main/src/colmap/sfm/incremental_mapper_impl.cc
 - COLMAP FAQ (incremental/global SfM trade-offs, intrinsics, BA runtime controls): https://colmap.github.io/faq.html
 - Ceres solver guidance for Schur-based bundle adjustment: https://ceres-solver.readthedocs.io/latest/solving_faqs.html
+- Ceres Android build requirements and SuiteSparse licensing note: https://ceres-solver.readthedocs.io/latest/installation.html
 - Blender camera solver and conversion to F-curves: https://docs.blender.org/manual/en/latest/animation/constraints/motion_tracking/camera_solver.html
