@@ -170,6 +170,7 @@ class CameraTrackingEngine(
                                             Calib3d.RANSAC,
                                             0.999,
                                             1.0,
+                                            1000,
                                             inlierMask
                                         )
                                         try {
