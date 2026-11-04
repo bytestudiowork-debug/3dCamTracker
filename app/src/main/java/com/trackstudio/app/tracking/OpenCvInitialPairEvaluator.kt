@@ -32,12 +32,15 @@ internal object OpenCvInitialPairEvaluator {
         secondKeypoints: Array<KeyPoint>,
         secondDescriptors: Mat,
         cameraMatrix: Mat,
+        frameWidth: Int,
+        frameHeight: Int,
         policy: InitialPairPolicy = InitialPairPolicy(),
         ratioThreshold: Float = 0.78f,
         maximumMatches: Int = 2500,
         ransacThresholdPx: Double = 1.0
     ): InitialPairEvaluation {
         require(firstFrame >= 0 && secondFrame > firstFrame)
+        require(frameWidth > 0 && frameHeight > 0)
         require(!cameraMatrix.empty() && cameraMatrix.rows() == 3 && cameraMatrix.cols() == 3)
 
         if (firstDescriptors.empty() || secondDescriptors.empty() ||
@@ -86,8 +89,6 @@ internal object OpenCvInitialPairEvaluator {
         val homographyMask = Mat()
         val rotation = Mat()
         val translation = Mat()
-        val essential = Mat()
-        val homography = Mat()
 
         try {
             points1.fromList(matchedFirst)
@@ -174,9 +175,7 @@ internal object OpenCvInitialPairEvaluator {
                 }
                 val inlierCount = inlierIndices.size
                 val coverage = occupiedGridCells(
-                    inlierIndices.map { matchedFirst[it] },
-                    firstKeypointsImageWidth(firstKeypoints),
-                    firstKeypointsImageHeight(firstKeypoints)
+                    inlierIndices.map { matchedFirst[it] }, frameWidth, frameHeight
                 )
                 val parallax = inlierIndices.map { index ->
                     rayAngleDegrees(
@@ -220,8 +219,6 @@ internal object OpenCvInitialPairEvaluator {
             homographyMask.release()
             rotation.release()
             translation.release()
-            essential.release()
-            homography.release()
         }
     }
 
@@ -271,12 +268,6 @@ internal object OpenCvInitialPairEvaluator {
         }
         return cells.count { it }
     }
-
-    private fun firstKeypointsImageWidth(keypoints: Array<KeyPoint>): Int =
-        keypoints.maxOfOrNull { it.pt.x.toInt() + 1 } ?: 0
-
-    private fun firstKeypointsImageHeight(keypoints: Array<KeyPoint>): Int =
-        keypoints.maxOfOrNull { it.pt.y.toInt() + 1 } ?: 0
 
     private fun rayAngleDegrees(
         first: org.opencv.core.Point,
