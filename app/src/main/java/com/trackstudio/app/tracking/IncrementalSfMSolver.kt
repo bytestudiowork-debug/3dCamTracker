@@ -481,10 +481,9 @@ internal class IncrementalSfMSolver(
                 }
             }
 
-            // Two bounded global refinement rounds: re-estimate each registered
-            // camera against the latest shared map, then retriangulate landmarks
-            // using updated camera poses. This reduces incremental drift without
-            // treating independent per-frame pose fits as joint bundle adjustment.
+            // Two bounded block-coordinate BA rounds alternate robust 3D
+            // landmark optimization with registered-camera PnP refinement.
+            // This reduces map/pose inconsistency without a large sparse solver.
             val refinementFrames = poseByFrame.indices.filter { index ->
                 index != selected.firstFrame && poseByFrame[index] != null
             }
@@ -530,8 +529,9 @@ internal class IncrementalSfMSolver(
                                 frameCount,
                                 "Bundle adjustment · refining cameras",
                                 overallFraction = 0.90f + 0.09f *
-                                    (position + 1).toFloat() /
-                                        refinementFrames.size.coerceAtLeast(1),
+                                    (refinementRound +
+                                        (position + 1).toFloat() /
+                                            refinementFrames.size.coerceAtLeast(1)) / 2f,
                                 completedFrames = frameCount,
                                 totalFrames = frameCount
                             )
