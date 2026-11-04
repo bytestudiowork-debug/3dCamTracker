@@ -106,9 +106,10 @@ internal class IncrementalSfMSolver(
                 }
                 onProgress(
                     CameraTrackingProgress(
-                        frameIndex = sampleIndex + 1,
-                        frameCount = orderedCandidateFrames.size,
-                        phase = "Analyzing candidate frames"
+                        frameIndex = index + 1,
+                        frameCount = frameCount,
+                        phase = "Analyzing candidate frames",
+                        overallFraction = 0.25f * (sampleIndex + 1) / orderedCandidateFrames.size
                     )
                 )
             }
@@ -133,9 +134,10 @@ internal class IncrementalSfMSolver(
                 }
                 onProgress(
                     CameraTrackingProgress(
-                        frameIndex = frameCount,
+                        frameIndex = pair.second + 1,
                         frameCount = frameCount,
-                        phase = "Evaluating camera-pair geometry (${candidateIndex + 1}/${pairCandidates.size})"
+                        phase = "Evaluating camera-pair geometry (${candidateIndex + 1}/${pairCandidates.size})",
+                        overallFraction = 0.25f + 0.10f * (candidateIndex + 1) / pairCandidates.size
                     )
                 )
             }
@@ -154,7 +156,8 @@ internal class IncrementalSfMSolver(
                 CameraTrackingProgress(
                     selected.secondFrame + 1,
                     frameCount,
-                    "Initializing 3D camera map"
+                    "Initializing 3D camera map",
+                    overallFraction = 0.36f
                 )
             )
             val geometry = estimatePairGeometry(
@@ -222,7 +225,10 @@ internal class IncrementalSfMSolver(
                         CameraTrackingProgress(
                             frameIndex,
                             frameCount,
-                            "Registering camera frame"
+                            "Registering camera frame",
+                            overallFraction = 0.36f + 0.64f *
+                                (frameIndex - selected.secondFrame).toFloat() /
+                                (frameCount - selected.secondFrame).coerceAtLeast(1)
                         )
                     )
                     val source = frameProvider(frameIndex)
@@ -310,7 +316,10 @@ internal class IncrementalSfMSolver(
                         CameraTrackingProgress(
                             frameIndex + 1,
                             frameCount,
-                            "Registered ${registeredFrames} cameras"
+                            "Registered ${registeredFrames} cameras",
+                            overallFraction = 0.36f + 0.64f *
+                                (frameIndex + 1 - selected.secondFrame).toFloat() /
+                                (frameCount - selected.secondFrame).coerceAtLeast(1)
                         )
                     )
                 }
@@ -353,7 +362,9 @@ internal class IncrementalSfMSolver(
             val finalStats = SfMTriangulator.triangulate(
                 tracks, poseByFrame.filterNotNull(), cameraMatrix
             ).stats
-            onProgress(CameraTrackingProgress(frameCount, frameCount, "Camera solve complete"))
+            onProgress(CameraTrackingProgress(
+                frameCount, frameCount, "Camera solve complete", overallFraction = 1f
+            ))
             CameraTrackingResult(
                 poses = denseTimeline,
                 diagnostics = diagnostics,
