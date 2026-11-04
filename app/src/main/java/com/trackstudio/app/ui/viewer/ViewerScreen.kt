@@ -165,7 +165,18 @@ fun ViewerScreen(
                             projectName = projectName,
                             fps = state.playback.fps,
                             frameCount = state.playback.frameCount,
-                            modifier = Modifier
+                            isAutoTracking = state.isAutoTracking,
+frameCount = state.playback.frameCount,
+                            trackingProgress = state.trackingProgress,
+frameCount = state.playback.frameCount,
+                            trackingError = state.trackingError,
+frameCount = state.playback.frameCount,
+                            trackingSummary = state.trackingSummary,
+frameCount = state.playback.frameCount,
+                            onAutoTrack = viewModel::startAutoTrack,
+frameCount = state.playback.frameCount,
+                            onCancelAutoTrack = viewModel::cancelAutoTrack,
+modifier = Modifier
                                 .width(panelWidth)
                                 .fillMaxHeight()
                         )
@@ -186,7 +197,18 @@ fun ViewerScreen(
                         projectName = projectName,
                         fps = state.playback.fps,
                         frameCount = state.playback.frameCount,
-                        modifier = Modifier
+                        isAutoTracking = state.isAutoTracking,
+frameCount = state.playback.frameCount,
+                        trackingProgress = state.trackingProgress,
+frameCount = state.playback.frameCount,
+                        trackingError = state.trackingError,
+frameCount = state.playback.frameCount,
+                        trackingSummary = state.trackingSummary,
+frameCount = state.playback.frameCount,
+                        onAutoTrack = viewModel::startAutoTrack,
+frameCount = state.playback.frameCount,
+                        onCancelAutoTrack = viewModel::cancelAutoTrack,
+modifier = Modifier
                             .align(Alignment.CenterEnd)
                             .width(drawerWidth)
                             .fillMaxHeight()

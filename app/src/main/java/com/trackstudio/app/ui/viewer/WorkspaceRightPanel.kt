@@ -57,6 +57,8 @@ import com.trackstudio.app.ui.theme.PanelBorder
 import com.trackstudio.app.ui.theme.PanelSurfaceRaised
 import com.trackstudio.app.ui.theme.TextPrimary
 import com.trackstudio.app.ui.theme.TextSecondary
+import com.trackstudio.app.tracking.CameraTrackingProgress
+import com.trackstudio.app.viewmodel.CameraTrackingSummary
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -70,6 +72,12 @@ fun WorkspaceRightPanel(
     projectName: String,
     fps: Double,
     frameCount: Int,
+    isAutoTracking: Boolean,
+    trackingProgress: CameraTrackingProgress?,
+    trackingError: String?,
+    trackingSummary: CameraTrackingSummary?,
+    onAutoTrack: () -> Unit,
+    onCancelAutoTrack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedTab by remember(projectName) { mutableStateOf("Tracking") }
@@ -111,7 +119,7 @@ fun WorkspaceRightPanel(
         }
 
         when (selectedTab) {
-            "Tracking" -> TrackingToolsCard()
+            "Tracking" -> TrackingToolsCard(isAutoTracking, trackingProgress, trackingError, trackingSummary, onAutoTrack, onCancelAutoTrack)
             "Tools" -> QuickActionsCard()
             else -> ProjectSummaryCard(projectName, fps, frameCount)
         }
@@ -203,63 +211,54 @@ private fun ProjectDetailRow(label: String, value: String) {
 }
 
 @Composable
-private fun TrackingToolsCard() {
-    var tracking by remember { mutableStateOf(false) }
-    var trackType by remember { mutableStateOf("Point Tracker") }
-    var searchArea by remember { mutableStateOf("Auto") }
-    var sensitivity by remember { mutableFloatStateOf(0.75f) }
-    var trackDataExpanded by remember { mutableStateOf(false) }
-
+private fun TrackingToolsCard(
+    isAutoTracking: Boolean,
+    progress: CameraTrackingProgress?,
+    error: String?,
+    summary: CameraTrackingSummary?,
+    onAutoTrack: () -> Unit,
+    onCancelAutoTrack: () -> Unit
+) {
+    var detailsExpanded by remember { mutableStateOf(false) }
     PanelCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            ChromeButton(
-                text = if (tracking) "Tracking..." else "Start Tracking",
-                icon = Icons.Filled.PlayArrow,
-                filled = true,
-                onClick = { tracking = true },
-                modifier = Modifier.fillMaxWidth(),
-                height = 48.dp
-            )
-            ChromeButton(
-                text = "Stop Tracking",
-                icon = Icons.Filled.Stop,
-                onClick = { tracking = false },
-                modifier = Modifier.fillMaxWidth(),
-                height = 48.dp
-            )
-        }
-
-        SectionDivider()
-        CollapsibleSection(title = "Track Options", titleSize = 16) {
-            Text("Track Type", color = TextSecondary, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 14.dp))
-            TrackingOptionSelector(trackType, listOf("Point Tracker", "Planar Tracker", "Object Tracker")) { trackType = it }
-            Text("Search Area", color = TextSecondary, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 14.dp))
-            TrackingOptionSelector(searchArea, listOf("Auto", "Small", "Medium", "Large")) { searchArea = it }
-            Column(modifier = Modifier.padding(horizontal = 14.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Sensitivity", color = TextSecondary, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                    Text("${(sensitivity * 100).roundToInt()}%", color = TextPrimary, fontSize = 12.sp)
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(
+                modifier = Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(8.dp))
+                    .background(if (isAutoTracking) PanelSurfaceRaised else AccentPrimary)
+                    .clickable(enabled = !isAutoTracking, onClick = onAutoTrack)
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Text(
+                        if (isAutoTracking) "Tracking · ${progress?.frameLabel ?: "Preparing"}" else "Auto Track",
+                        color = if (isAutoTracking) TextPrimary else Color.White,
+                        fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1
+                    )
+                    if (isAutoTracking) {
+                        Box(Modifier.fillMaxWidth().padding(top = 5.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(PanelBorder)) {
+                            Box(Modifier.fillMaxWidth((progress?.fraction ?: 0f).coerceIn(0f, 1f)).height(3.dp).background(AccentPrimary))
+                        }
+                    }
                 }
-                ThinSlider(value = sensitivity, onValueChange = { sensitivity = it }, modifier = Modifier.fillMaxWidth())
+            }
+            if (isAutoTracking) ChromeButton("Cancel Tracking", Icons.Filled.Stop, onClick = onCancelAutoTrack, modifier = Modifier.fillMaxWidth(), height = 40.dp)
+            if (error != null) Text(error, color = AccentError, fontSize = 11.sp)
+            if (summary != null) {
+                Text("${summary.registeredCameras}/${summary.totalFrames} cameras registered · ${summary.landmarkCount} 3D points", color = TextPrimary, fontSize = 11.sp)
+                Text("Inlier ratio ${(summary.inlierRatio * 100).roundToInt()}% · estimated intrinsics", color = TextSecondary, fontSize = 10.sp)
             }
         }
         SectionDivider()
-        Row(
-            modifier = Modifier.fillMaxWidth().clickable { trackDataExpanded = !trackDataExpanded }
-                .padding(horizontal = 14.dp, vertical = 13.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Outlined.ScatterPlot, contentDescription = null, tint = AccentPrimary, modifier = Modifier.size(19.dp))
-            Text("Track Data", color = TextPrimary, fontSize = 14.sp, modifier = Modifier.weight(1f).padding(start = 10.dp))
-            Icon(if (trackDataExpanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown, contentDescription = null, tint = TextSecondary)
+        Row(Modifier.fillMaxWidth().clickable { detailsExpanded = !detailsExpanded }.padding(horizontal = 14.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.ScatterPlot, null, tint = AccentPrimary, modifier = Modifier.size(19.dp))
+            Text("Solve Details", color = TextPrimary, fontSize = 14.sp, modifier = Modifier.weight(1f).padding(start = 10.dp))
+            Icon(if (detailsExpanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown, null, tint = TextSecondary)
         }
-        if (trackDataExpanded) {
-            PointCountRow("Active Points", 0, AccentSuccess)
-            PointCountRow("Lost Points", 0, AccentError)
-            PointCountRow("Total Points", 0, AccentPrimary)
+        if (detailsExpanded) {
+            ProjectDetailRow("Registered cameras", summary?.registeredCameras?.toString() ?: "—")
+            ProjectDetailRow("3D landmarks", summary?.landmarkCount?.toString() ?: "—")
+            ProjectDetailRow("Initial pair", summary?.initialPairFrames?.let { "${it.first + 1} – ${it.second + 1}" } ?: "—")
         }
     }
 }

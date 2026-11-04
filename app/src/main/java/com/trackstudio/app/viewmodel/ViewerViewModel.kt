@@ -11,6 +11,13 @@ import androidx.lifecycle.viewModelScope
 import com.trackstudio.app.playback.FrameSource
 import com.trackstudio.app.playback.PlaybackController
 import com.trackstudio.app.playback.PlaybackState
+import com.trackstudio.app.tracking.CameraTrackingEngine
+import com.trackstudio.app.tracking.CameraTrackingProgress
+import com.trackstudio.app.tracking.OpenCvRuntime
+import kotlinx.coroutines.withContext
+import org.opencv.android.Utils
+import org.opencv.core.CvType
+import org.opencv.core.Mat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
@@ -30,12 +37,18 @@ import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.max
 
+data class CameraTrackingSummary(val registeredCameras: Int, val totalFrames: Int, val landmarkCount: Int, val inlierRatio: Double, val initialPairFrames: Pair<Int, Int>?)
+
 data class ViewerUiState(
     val playback: PlaybackState = PlaybackState(),
     val currentBitmap: Bitmap? = null,
     val isLoadingFrame: Boolean = false,
     val errorMessage: String? = null,
-    val thumbnails: Map<Int, Bitmap> = emptyMap()
+    val thumbnails: Map<Int, Bitmap> = emptyMap(),
+    val isAutoTracking: Boolean = false,
+    val trackingProgress: CameraTrackingProgress? = null,
+    val trackingError: String? = null,
+    val trackingSummary: CameraTrackingSummary? = null
 )
 
 class ViewerViewModel(
@@ -82,6 +95,7 @@ class ViewerViewModel(
 
     private var requestJob: Job? = null
     private var thumbnailJob: Job? = null
+    private var trackingJob: Job? = null
     private var thumbnailCount = 0
 
     private val frameSource =
@@ -103,8 +117,11 @@ class ViewerViewModel(
         )
 
     fun loadSequence(uris: List<Uri>, fps: Double) {
+        trackingJob?.cancel()
+        trackingJob = null
         requestJob?.cancel()
         thumbnailJob?.cancel()
+        trackingJob?.cancel()
         playbackController.release()
         inFlight.values.forEach { it.cancel() }
         inFlight.clear()
@@ -159,8 +176,70 @@ class ViewerViewModel(
     }
 
     fun clearError() {
-        _uiState.update { it.copy(errorMessage = null) }
+        _uiState.update { it.copy(errorMessage = null, trackingError = null) }
     }
+
+    fun startAutoTrack() {
+        if (_uiState.value.isAutoTracking) return
+        val uris = frameUris.toList()
+        if (uris.size < 3) {
+            _uiState.update { it.copy(trackingError = "Auto Track needs at least three frames.") }
+            return
+        }
+        playbackController.pause()
+        trackingJob?.cancel()
+        _uiState.update { it.copy(isAutoTracking = true, trackingProgress = CameraTrackingProgress(0, uris.size, "Preparing footage", 0f, 0, uris.size), trackingError = null, trackingSummary = null) }
+        trackingJob = viewModelScope.launch {
+            var intrinsics: Mat? = null
+            try {
+                check(OpenCvRuntime.ensureLoaded()) { "OpenCV could not be initialized on this device." }
+                val dimensions = withContext(Dispatchers.IO) {
+                    val bitmap = decodeSampled(uris.first(), maxDecodeDimension, Bitmap.Config.ARGB_8888)
+                    try { bitmap.width to bitmap.height } finally { bitmap.recycle() }
+                }
+                val width = dimensions.first
+                val height = dimensions.second
+                require(width > 0 && height > 0) { "The first frame has invalid dimensions." }
+                // Approximate intrinsics until focal length calibration/EXIF support is added.
+                val focal = max(width, height) * 0.9
+                val cameraMatrix = Mat.eye(3, 3, CvType.CV_64F)
+                intrinsics = cameraMatrix
+                cameraMatrix.put(0, 0, focal, 0.0, (width - 1) * 0.5, 0.0, focal, (height - 1) * 0.5, 0.0, 0.0, 1.0)
+                val result = CameraTrackingEngine().solve(
+                    frameCount = uris.size,
+                    cameraMatrix = cameraMatrix,
+                    frameProvider = { index ->
+                        withContext(Dispatchers.IO) {
+                            val bitmap = decodeSampled(uris[index], maxDecodeDimension, Bitmap.Config.ARGB_8888)
+                            val mat = Mat()
+                            try { Utils.bitmapToMat(bitmap, mat); mat }
+                            catch (failure: Throwable) { mat.release(); throw failure }
+                            finally { bitmap.recycle() }
+                        }
+                    },
+                    onProgress = { progress -> _uiState.update { it.copy(trackingProgress = progress) } }
+                )
+                _uiState.update { state ->
+                    state.copy(
+                        isAutoTracking = false,
+                        trackingProgress = CameraTrackingProgress(uris.size, uris.size, "Camera solve complete", 1f, uris.size, uris.size),
+                        trackingSummary = CameraTrackingSummary(result.registeredCameraCount, result.processedFrames, result.landmarks.size, result.inlierRatio, result.initialPairFrames),
+                        trackingError = if (result.registeredCameraCount < 3) "Only ${result.registeredCameraCount} cameras registered. The solve may be incomplete; try footage with stronger parallax." else null
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                _uiState.update { it.copy(isAutoTracking = false) }
+                throw cancelled
+            } catch (failure: Throwable) {
+                _uiState.update { it.copy(isAutoTracking = false, trackingError = failure.message ?: "Camera tracking failed.") }
+            } finally {
+                intrinsics?.release()
+                trackingJob = null
+            }
+        }
+    }
+
+    fun cancelAutoTrack() { trackingJob?.cancel() }
 
     /**
      * Requests a modest set of evenly spaced preview thumbnails.
