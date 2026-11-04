@@ -79,6 +79,7 @@ class CameraTrackingEngine(
                 val gray = Mat()
                 val keypoints = org.opencv.core.MatOfKeyPoint()
                 val descriptors = Mat()
+                var detectedKeypoints: Array<KeyPoint> = emptyArray()
 
                 try {
                     when (source.channels()) {
@@ -91,6 +92,7 @@ class CameraTrackingEngine(
                     }
 
                     orb.detectAndCompute(gray, Mat(), keypoints, descriptors)
+                    detectedKeypoints = keypoints.toArray()
 
                     if (frameIndex == 0) {
                         poses += CameraPose(
@@ -193,7 +195,7 @@ class CameraTrackingEngine(
                                                 if (previousArray != null) {
                                                     val geometricInliers = matchedIndices.filterIndexed { index, _ ->
                                                         val maskValue = inlierMask.get(index, 0)
-                                                        maskValue != null && maskValue[0] != 0.0
+                                                        maskValue != null && maskValue.isNotEmpty() && maskValue[0] != 0.0
                                                     }
                                                     featureTrackBuilder.addInlierMatches(
                                                         frameIndex,
@@ -274,7 +276,7 @@ class CameraTrackingEngine(
                 previousDescriptors?.release()
                 previousGray = gray.clone()
                 previousDescriptors = descriptors
-                previousKeypointArray = keypoints.toArray()
+                previousKeypointArray = detectedKeypoints
 
                 onProgress(
                     CameraTrackingProgress(
@@ -287,6 +289,13 @@ class CameraTrackingEngine(
 
             val inlierRatio =
                 if (totalMatches == 0) 0.0 else totalInliers.toDouble() / totalMatches
+            val featureTracks = featureTrackBuilder.build()
+            onProgress(CameraTrackingProgress(frameCount, frameCount, "Triangulating 3D landmarks"))
+            val reconstruction = SfMTriangulator.triangulate(
+                featureTracks = featureTracks,
+                poses = poses,
+                cameraMatrix = cameraMatrix
+            )
             CameraTrackingResult(
                 poses = poses,
                 diagnostics = diagnostics,
@@ -296,7 +305,9 @@ class CameraTrackingEngine(
                 totalInliers = totalInliers,
                 inlierRatio = inlierRatio,
                 isCameraMotionEstimated = solvedPairs > 0,
-                featureTracks = featureTrackBuilder.build()
+                featureTracks = featureTracks,
+                landmarks = reconstruction.landmarks,
+                triangulationStats = reconstruction.stats
             )
         } finally {
             previousGray?.release()
@@ -360,5 +371,7 @@ data class CameraTrackingResult(
     val totalInliers: Int,
     val inlierRatio: Double,
     val isCameraMotionEstimated: Boolean,
-    val featureTracks: List<CameraFeatureTrack> = emptyList()
+    val featureTracks: List<CameraFeatureTrack> = emptyList(),
+    val landmarks: List<CameraLandmark> = emptyList(),
+    val triangulationStats: TriangulationStats = TriangulationStats()
 )
