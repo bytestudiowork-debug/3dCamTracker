@@ -15,6 +15,39 @@ internal class FeatureTrackBuilder {
     private var previousAssignments = mutableMapOf<Int, Int>()
     private val tracks = linkedMapOf<Int, MutableList<CameraFeatureObservation>>()
 
+    /** Seeds persistent IDs from the selected, geometrically verified initialization pair. */
+    fun seedPair(
+        firstFrame: Int,
+        secondFrame: Int,
+        firstKeypoints: Array<KeyPoint>,
+        secondKeypoints: Array<KeyPoint>,
+        inlierMatches: List<Pair<Int, Int>>
+    ) {
+        require(firstFrame >= 0 && secondFrame > firstFrame)
+        val assignments = mutableMapOf<Int, Int>()
+        for ((firstIndex, secondIndex) in inlierMatches) {
+            if (firstIndex !in firstKeypoints.indices ||
+                secondIndex !in secondKeypoints.indices ||
+                secondIndex in assignments
+            ) continue
+            val id = nextTrackId++
+            tracks[id] = mutableListOf(
+                CameraFeatureObservation(
+                    firstFrame,
+                    firstKeypoints[firstIndex].pt.x,
+                    firstKeypoints[firstIndex].pt.y
+                ),
+                CameraFeatureObservation(
+                    secondFrame,
+                    secondKeypoints[secondIndex].pt.x,
+                    secondKeypoints[secondIndex].pt.y
+                )
+            )
+            assignments[secondIndex] = id
+        }
+        previousAssignments = assignments
+    }
+
     fun addInlierMatches(
         frameIndex: Int,
         previousKeypoints: Array<KeyPoint>,
