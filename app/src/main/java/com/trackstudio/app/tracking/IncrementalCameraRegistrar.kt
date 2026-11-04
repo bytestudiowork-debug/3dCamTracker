@@ -209,7 +209,12 @@ internal object IncrementalCameraRegistrar {
             CameraRegistrationResult(
                 frameIndex = frameIndex,
                 accepted = true,
-                pose = CameraPose(frameIndex, rotation, translation),
+                pose = CameraPose(
+                    frameIndex,
+                    rotation,
+                    translation,
+                    CameraPoseStatus.PNP_REGISTERED
+                ),
                 correspondenceCount = correspondenceCount,
                 inlierCount = inlierCount,
                 inlierRatio = inlierRatio,

@@ -49,8 +49,12 @@ internal object SfMTriangulator {
                 rejectedShort++
                 continue
             }
+            // A held pose preserves frame-index alignment but is not a real
+            // geometric observation. Never use it to triangulate landmarks.
             val validObservations = track.observations.mapNotNull { observation ->
-                poseByFrame[observation.frameIndex]?.let { observation to it }
+                poseByFrame[observation.frameIndex]
+                    ?.takeIf { it.status != CameraPoseStatus.HELD_LAST_VALID }
+                    ?.let { observation to it }
             }
             if (validObservations.size < 2) {
                 rejectedMissingPose++

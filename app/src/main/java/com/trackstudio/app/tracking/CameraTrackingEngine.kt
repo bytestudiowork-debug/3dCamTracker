@@ -82,6 +82,7 @@ class CameraTrackingEngine(
                 val keypoints = org.opencv.core.MatOfKeyPoint()
                 val descriptors = Mat()
                 var detectedKeypoints: Array<KeyPoint> = emptyArray()
+                var retainDescriptors = false
 
                 try {
                     when (source.channels()) {
@@ -100,12 +101,14 @@ class CameraTrackingEngine(
                         detectionMask.release()
                     }
                     detectedKeypoints = keypoints.toArray()
+                    val currentKeypointArray = detectedKeypoints
 
                     if (frameIndex == 0) {
                         poses += CameraPose(
                             frameIndex = 0,
                             rotation = identity3(),
-                            translation = doubleArrayOf(0.0, 0.0, 0.0)
+                            translation = doubleArrayOf(0.0, 0.0, 0.0),
+                            status = CameraPoseStatus.REFERENCE
                         )
                         diagnostics += FrameTrackingDiagnostic(
                             frameIndex = 0,
@@ -120,9 +123,15 @@ class CameraTrackingEngine(
                             prevDescriptors.empty() || descriptors.empty()
                         ) {
                             featureTrackBuilder.breakContinuity()
+                            poses += CameraPose(
+                                frameIndex = frameIndex,
+                                rotation = matrix3(accumulatedRotation),
+                                translation = vector3(accumulatedTranslation),
+                                status = CameraPoseStatus.HELD_LAST_VALID
+                            )
                             diagnostics += FrameTrackingDiagnostic(
                                 frameIndex, keypoints.rows(), 0, 0,
-                                "Insufficient visual features"
+                                "Insufficient visual features; previous pose held"
                             )
                         } else {
                             onProgress(
@@ -150,8 +159,7 @@ class CameraTrackingEngine(
                                         val a = pair[0].queryIdx
                                         val b = pair[0].trainIdx
                                         val prevArray = previousKeypointArray ?: continue
-                                        val currArray = keypoints.toArray()
-                                        if (a < prevArray.size && b < currArray.size) {
+                                        if (a < prevArray.size && b < currentKeypointArray.size) {
                                             previousPoints += prevArray[a].pt
                                             currentPoints += currArray[b].pt
                                             matchedIndices += a to b
@@ -247,7 +255,7 @@ class CameraTrackingEngine(
                                                             featureTrackBuilder.addInlierMatches(
                                                                 frameIndex,
                                                                 previousArray,
-                                                                keypoints.toArray(),
+                                                                currentKeypointArray,
                                                                 geometricInliers
                                                             )
                                                         }
@@ -310,7 +318,12 @@ class CameraTrackingEngine(
                                 poses += CameraPose(
                                     frameIndex = frameIndex,
                                     rotation = matrix3(accumulatedRotation),
-                                    translation = vector3(accumulatedTranslation)
+                                    translation = vector3(accumulatedTranslation),
+                                    status = if (pairStatus == "Camera motion estimated") {
+                                        CameraPoseStatus.RELATIVE_ESTIMATE
+                                    } else {
+                                        CameraPoseStatus.HELD_LAST_VALID
+                                    }
                                 )
                                 diagnostics += FrameTrackingDiagnostic(
                                     frameIndex,
@@ -328,10 +341,12 @@ class CameraTrackingEngine(
                     source.release()
                     gray.release()
                     keypoints.release()
+                    if (!retainDescriptors) descriptors.release()
                 }
 
                 previousDescriptors?.release()
                 previousDescriptors = descriptors
+                retainDescriptors = true
                 previousKeypointArray = detectedKeypoints
 
                 onProgress(
@@ -369,6 +384,7 @@ class CameraTrackingEngine(
             previousDescriptors?.release()
             accumulatedRotation.release()
             accumulatedTranslation.release()
+            matcher.clear()
             orb.clear()
         }
     }
@@ -403,10 +419,18 @@ data class CameraTrackingProgress(
         else (frameIndex.toFloat() / frameCount).coerceIn(0f, 1f)
 }
 
+enum class CameraPoseStatus {
+    REFERENCE,
+    RELATIVE_ESTIMATE,
+    PNP_REGISTERED,
+    HELD_LAST_VALID
+}
+
 data class CameraPose(
     val frameIndex: Int,
     val rotation: DoubleArray,
-    val translation: DoubleArray
+    val translation: DoubleArray,
+    val status: CameraPoseStatus = CameraPoseStatus.RELATIVE_ESTIMATE
 )
 
 data class FrameTrackingDiagnostic(
