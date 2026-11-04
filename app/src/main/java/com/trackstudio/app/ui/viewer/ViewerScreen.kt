@@ -303,7 +303,7 @@ private fun ViewerPanel(
         if (trackingPoints.isNotEmpty()) {
             Text(
                 text = "TRACK POINTS · ${trackingPoints.size}",
-                color = Color(0xFFFFD54F),
+                color = Color(0xFF00E5FF),
                 fontSize = 10.sp,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
