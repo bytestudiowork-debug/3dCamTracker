@@ -481,7 +481,7 @@ internal class IncrementalSfMSolver(
                                     registration.inlierCount,
                                     "PnP registered backwards (${registration.inlierCount} inliers)"
                                 )
-                                if (acceptedRegistrationsSinceMapUpdate >= 3) {
+                                if (acceptedRegistrationsSinceMapUpdate >= 2) {
                                     val update = SfMTriangulator.triangulate(
                                         tracks, poseByFrame.filterNotNull(), cameraMatrix
                                     )
