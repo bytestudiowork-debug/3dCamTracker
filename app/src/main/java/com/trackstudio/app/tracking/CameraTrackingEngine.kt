@@ -25,7 +25,10 @@ import org.opencv.imgproc.Imgproc
  * triangulation, loop closure and bundle adjustment are later engine stages.
  *
  * The frame provider is called sequentially so callers can decode one frame
- * at a time instead of retaining an entire image sequence in memory.
+ * at a time instead of retaining an entire image sequence in memory. Ownership
+ * of each returned Mat transfers to this engine; it is released after processing.
+ *
+ * CameraPose uses world-to-camera transforms: X_camera = R * X_world + t.
  */
 class CameraTrackingEngine(
     private val maxFeatures: Int = 1800,
@@ -54,7 +57,6 @@ class CameraTrackingEngine(
         val diagnostics = mutableListOf<FrameTrackingDiagnostic>()
         val featureTrackBuilder = FeatureTrackBuilder()
 
-        var previousGray: Mat? = null
         var previousDescriptors: Mat? = null
         var previousKeypointArray: Array<KeyPoint>? = null
         var accumulatedRotation = Mat.eye(3, 3, CvType.CV_64F)
@@ -91,7 +93,12 @@ class CameraTrackingEngine(
                         )
                     }
 
-                    orb.detectAndCompute(gray, Mat(), keypoints, descriptors)
+                    val detectionMask = Mat()
+                    try {
+                        orb.detectAndCompute(gray, detectionMask, keypoints, descriptors)
+                    } finally {
+                        detectionMask.release()
+                    }
                     detectedKeypoints = keypoints.toArray()
 
                     if (frameIndex == 0) {
@@ -109,8 +116,7 @@ class CameraTrackingEngine(
                         )
                     } else {
                         val prevDescriptors = previousDescriptors
-                        val prevGray = previousGray
-                        if (prevDescriptors == null || prevGray == null ||
+                        if (prevDescriptors == null ||
                             prevDescriptors.empty() || descriptors.empty()
                         ) {
                             featureTrackBuilder.breakContinuity()
@@ -168,7 +174,6 @@ class CameraTrackingEngine(
                                     try {
                                         points1.fromList(previousPoints)
                                         points2.fromList(currentPoints)
-                                        essential.create(3, 3, CvType.CV_64F)
                                         val essentialEstimate = Calib3d.findEssentialMat(
                                             points1,
                                             points2,
@@ -180,29 +185,77 @@ class CameraTrackingEngine(
                                             inlierMask
                                         )
                                         try {
-                                            if (!essentialEstimate.empty()) {
-                                                essentialEstimate.copyTo(essential)
-                                                inlierCount = Calib3d.recoverPose(
-                                                    essential,
-                                                    points1,
-                                                    points2,
-                                                    cameraMatrix,
-                                                    rotation,
-                                                    translation,
-                                                    inlierMask
-                                                )
-                                                val previousArray = previousKeypointArray
-                                                if (previousArray != null) {
-                                                    val geometricInliers = matchedIndices.filterIndexed { index, _ ->
-                                                        val maskValue = inlierMask.get(index, 0)
-                                                        maskValue != null && maskValue.isNotEmpty() && maskValue[0] != 0.0
+                                            if (!essentialEstimate.empty() &&
+                                                essentialEstimate.cols() == 3 &&
+                                                essentialEstimate.rows() >= 3
+                                            ) {
+                                                // OpenCV may return several 3x3 essential-matrix
+                                                // candidates stacked vertically. Test each candidate
+                                                // with a fresh copy of the RANSAC mask and retain the
+                                                // one with the most cheirality-consistent points.
+                                                val candidateCount = essentialEstimate.rows() / 3
+                                                var bestInlierMask: Mat? = null
+                                                var bestRotation: Mat? = null
+                                                var bestTranslation: Mat? = null
+                                                try {
+                                                    for (candidateIndex in 0 until candidateCount) {
+                                                        currentCoroutineContext().ensureActive()
+                                                        val candidate = essentialEstimate
+                                                            .rowRange(candidateIndex * 3, candidateIndex * 3 + 3)
+                                                            .clone()
+                                                        val candidateMask = inlierMask.clone()
+                                                        val candidateRotation = Mat()
+                                                        val candidateTranslation = Mat()
+                                                        try {
+                                                            val candidateInliers = Calib3d.recoverPose(
+                                                                candidate,
+                                                                points1,
+                                                                points2,
+                                                                cameraMatrix,
+                                                                candidateRotation,
+                                                                candidateTranslation,
+                                                                candidateMask
+                                                            )
+                                                            if (candidateInliers > inlierCount) {
+                                                                bestInlierMask?.release()
+                                                                bestRotation?.release()
+                                                                bestTranslation?.release()
+                                                                bestInlierMask = candidateMask.clone()
+                                                                bestRotation = candidateRotation.clone()
+                                                                bestTranslation = candidateTranslation.clone()
+                                                                inlierCount = candidateInliers
+                                                            }
+                                                        } finally {
+                                                            candidate.release()
+                                                            candidateMask.release()
+                                                            candidateRotation.release()
+                                                            candidateTranslation.release()
+                                                        }
                                                     }
-                                                    featureTrackBuilder.addInlierMatches(
-                                                        frameIndex,
-                                                        previousArray,
-                                                        keypoints.toArray(),
-                                                        geometricInliers
-                                                    )
+
+                                                    if (inlierCount > 0) {
+                                                        bestInlierMask?.copyTo(inlierMask)
+                                                        bestRotation?.copyTo(rotation)
+                                                        bestTranslation?.copyTo(translation)
+                                                        val previousArray = previousKeypointArray
+                                                        if (previousArray != null) {
+                                                            val geometricInliers = matchedIndices.filterIndexed { index, _ ->
+                                                                val maskValue = inlierMask.get(index, 0)
+                                                                maskValue != null && maskValue.isNotEmpty() &&
+                                                                    maskValue[0] != 0.0
+                                                            }
+                                                            featureTrackBuilder.addInlierMatches(
+                                                                frameIndex,
+                                                                previousArray,
+                                                                keypoints.toArray(),
+                                                                geometricInliers
+                                                            )
+                                                        }
+                                                    }
+                                                } finally {
+                                                    bestInlierMask?.release()
+                                                    bestRotation?.release()
+                                                    bestTranslation?.release()
                                                 }
                                             }
                                         } finally {
@@ -220,14 +273,19 @@ class CameraTrackingEngine(
                                                 1.0,
                                                 nextTranslation
                                             )
-                                            Core.gemm(
-                                                rotation,
-                                                accumulatedRotation,
-                                                1.0,
-                                                Mat(),
-                                                0.0,
-                                                nextRotation
-                                            )
+                                            val zeroMatrix = Mat.zeros(3, 3, CvType.CV_64F)
+                                            try {
+                                                Core.gemm(
+                                                    rotation,
+                                                    accumulatedRotation,
+                                                    1.0,
+                                                    zeroMatrix,
+                                                    0.0,
+                                                    nextRotation
+                                                )
+                                            } finally {
+                                                zeroMatrix.release()
+                                            }
                                             accumulatedTranslation.release()
                                             accumulatedRotation.release()
                                             accumulatedTranslation = nextTranslation
@@ -272,9 +330,7 @@ class CameraTrackingEngine(
                     keypoints.release()
                 }
 
-                previousGray?.release()
                 previousDescriptors?.release()
-                previousGray = gray.clone()
                 previousDescriptors = descriptors
                 previousKeypointArray = detectedKeypoints
 
@@ -310,7 +366,6 @@ class CameraTrackingEngine(
                 triangulationStats = reconstruction.stats
             )
         } finally {
-            previousGray?.release()
             previousDescriptors?.release()
             accumulatedRotation.release()
             accumulatedTranslation.release()
