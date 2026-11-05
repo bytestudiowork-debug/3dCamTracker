@@ -316,6 +316,35 @@ internal class IncrementalSfMSolver(
                                 ) registration = recovered
                             }
                         }
+                        // Second-keyframe recovery can fail when a frame is much
+                        // closer to the first seed. Try that seed only after the
+                        // adjacent-frame and second-seed attempts have failed.
+                        if (!registration.accepted &&
+                            !firstFrame.descriptors.empty() && !descriptors.empty()
+                        ) {
+                            val firstAnchorMatches = verifiedMatches(
+                                firstFrame.descriptors, firstFrame.keypoints,
+                                descriptors, currentKeypoints, cameraMatrix, matcher
+                            )
+                            if (firstAnchorMatches.isNotEmpty()) {
+                                trackBuilder.addInlierMatchesFromFrame(
+                                    selected.firstFrame, frameIndex,
+                                    firstFrame.keypoints, currentKeypoints, firstAnchorMatches
+                                )
+                                tracks = trackBuilder.build()
+                                val recoveredFromFirst = IncrementalCameraRegistrar.register(
+                                    frameIndex = frameIndex,
+                                    frameWidth = source.cols(),
+                                    frameHeight = source.rows(),
+                                    featureTracks = tracks,
+                                    landmarks = landmarksByTrack.values.toList(),
+                                    cameraMatrix = cameraMatrix
+                                )
+                                if (recoveredFromFirst.accepted ||
+                                    recoveredFromFirst.correspondenceCount > registration.correspondenceCount
+                                ) registration = recoveredFromFirst
+                            }
+                        }
                         totalCorrespondences += registration.correspondenceCount
                         if (registration.accepted && registration.pose != null) {
                             poseByFrame[frameIndex] = registration.pose
@@ -472,7 +501,36 @@ internal class IncrementalSfMSolver(
                                     ) registration = recovered
                                 }
                             }
-                            totalCorrespondences += registration.correspondenceCount
+                            // Second-keyframe recovery can fail when a frame is much
+                            // closer to the first seed. Try that seed only after the
+                            // adjacent-frame and second-seed attempts have failed.
+                            if (!registration.accepted &&
+                                !firstFrame.descriptors.empty() && !descriptors.empty()
+                            ) {
+                                val firstAnchorMatches = verifiedMatches(
+                                    firstFrame.descriptors, firstFrame.keypoints,
+                                    descriptors, currentKeypoints, cameraMatrix, matcher
+                                )
+                                if (firstAnchorMatches.isNotEmpty()) {
+                                    trackBuilder.addInlierMatchesFromFrame(
+                                        selected.firstFrame, frameIndex,
+                                        firstFrame.keypoints, currentKeypoints, firstAnchorMatches
+                                    )
+                                    tracks = trackBuilder.build()
+                                    val recoveredFromFirst = IncrementalCameraRegistrar.register(
+                                        frameIndex = frameIndex,
+                                        frameWidth = source.cols(),
+                                        frameHeight = source.rows(),
+                                        featureTracks = tracks,
+                                        landmarks = landmarksByTrack.values.toList(),
+                                        cameraMatrix = cameraMatrix
+                                    )
+                                    if (recoveredFromFirst.accepted ||
+                                        recoveredFromFirst.correspondenceCount > registration.correspondenceCount
+                                    ) registration = recoveredFromFirst
+                                }
+                            }
+                                totalCorrespondences += registration.correspondenceCount
                             if (registration.accepted && registration.pose != null) {
                                 poseByFrame[frameIndex] = registration.pose
                                 totalInliers += registration.inlierCount
