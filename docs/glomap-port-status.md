@@ -48,4 +48,4 @@ Not yet ported:
 - Ceres trust-region solve, gauge fixing, and conversion back to camera poses.
 - The assembled problem is not yet wired into a standalone GlomapReconstructionEngine.
 
-The builder intentionally stops before optimization. It does not substitute a different optimizer or claim to produce camera positions.
+The builder intentionally stops before optimization. It does not substitute a different optimizer or claim to produce camera positions. See [glomap-android-solver-dependencies.md](glomap-android-solver-dependencies.md) for the pinned Ceres Android dependency requirements and the next implementation sequence.
