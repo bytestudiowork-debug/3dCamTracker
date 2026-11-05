@@ -47,15 +47,22 @@ jobs:
           # Retry interrupted downloads; clear incomplete SDK cache between attempts.
           for attempt in 1 2 3; do
             echo "Android SDK installation attempt ${attempt}/3"
+            # sdkmanager can finish successfully before the yes process exits.
+            # Ignore yes' expected SIGPIPE and use sdkmanager's exit status.
+            set +o pipefail
             if yes | sdkmanager --install "${packages[@]}"; then
+              set -o pipefail
               exit 0
+            else
+              install_status=$?
+              set -o pipefail
             fi
             if [ "${attempt}" -lt 3 ]; then
               rm -rf "${ANDROID_SDK_ROOT}/.temp" "${HOME}/.android/cache"
               sleep $((attempt * 10))
             fi
           done
-          echo "Android SDK installation failed after 3 attempts."
+          echo "Android SDK installation failed after 3 attempts (sdkmanager exit: ${install_status})."
           exit 1
 
       - name: Set up Gradle
