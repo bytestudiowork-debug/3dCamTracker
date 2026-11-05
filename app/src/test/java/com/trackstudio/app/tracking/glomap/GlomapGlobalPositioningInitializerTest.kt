@@ -53,7 +53,7 @@ class GlomapGlobalPositioningInitializerTest {
             0.0
         )
         assertArrayEquals(
-            doubleArrayOf(1.0, 2.0, 3.0),
+            doubleArrayOf(7.0, 8.0, 9.0),
             result.frameTranslationsById.getValue(30),
             0.0
         )
