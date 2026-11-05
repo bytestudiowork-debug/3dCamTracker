@@ -47,17 +47,14 @@ internal object GlobalRotationAverager {
         }
         if (validEdges.isEmpty()) return null
 
-        // Reject edges that contradict an independent multi-edge path before
-        // choosing the maximum-inlier spanning tree. This prevents one bad,
-        // high-inlier pair from becoming the initialization backbone.
-        val cycleFilteredEdges = rejectCycleInconsistentEdges(
-            frames, validEdges, rotationOutlierDegrees
-        )
-        val component = largestComponent(frames, cycleFilteredEdges)
+        // Follow the GLOMAP controller order: largest connected component
+        // first, then rotation estimation and post-estimation outlier filtering.
+        // An extra cycle pre-filter is intentionally not applied here.
+        val component = largestComponent(frames, validEdges)
         if (component.size < 2) return null
         val activeFrames = frames.filter { it in component }
         val activeIndex = activeFrames.withIndex().associate { it.value to it.index }
-        val activeEdges = cycleFilteredEdges.filter {
+        val activeEdges = validEdges.filter {
             it.firstFrame in activeIndex && it.secondFrame in activeIndex
         }
         val root = activeFrames.first()
@@ -67,21 +64,20 @@ internal object GlobalRotationAverager {
         fun refine(edgesToUse: List<Edge>, initialL1: Boolean): Boolean {
             if (edgesToUse.isEmpty()) return false
             var residuals = computeResiduals(activeFrames, activeIndex, edgesToUse, rotations)
-            var baseWeights = edgesToUse.map { it.inlierCount.toDouble().coerceAtLeast(1.0) }
             val rounds = if (initialL1) l1Iterations else irlsIterations
+            var admmInnerIterations = 10
             repeat(rounds.coerceAtLeast(0)) {
-                val weights = DoubleArray(edgesToUse.size) { e ->
-                    val norm = norm3(residuals[e])
-                    if (initialL1) {
-                        baseWeights[e] / max(norm, 1e-4)
-                    } else {
-                        val sigma = Math.toRadians(sigmaDegrees.coerceAtLeast(0.1))
-                        val squared = norm * norm
-                        baseWeights[e] * sigma * sigma / (squared + sigma * sigma).let { it * it }
+                val deltas = if (initialL1) {
+                    solveL1Admm(activeFrames.size, activeIndex, edgesToUse, residuals, admmInnerIterations)
+                        .also { admmInnerIterations = min(admmInnerIterations * 2, 100) }
+                } else {
+                    val sigma = Math.toRadians(sigmaDegrees.coerceAtLeast(0.1))
+                    val weights = DoubleArray(edgesToUse.size) { e ->
+                        val squared = norm3(residuals[e]).let { it * it }
+                        sigma * sigma / ((squared + sigma * sigma) * (squared + sigma * sigma))
                     }
-                }
-                val deltas = solveTangentUpdates(activeFrames.size, activeIndex, edgesToUse, residuals, weights)
-                    ?: return false
+                    solveTangentUpdates(activeFrames.size, activeIndex, edgesToUse, residuals, weights)
+                } ?: return false
                 var averageStep = 0.0
                 for (i in activeFrames.indices) {
                     if (activeFrames[i] == root) continue
@@ -117,77 +113,6 @@ internal object GlobalRotationAverager {
             rootFrame = root,
             iterations = iterations
         )
-    }
-
-    /**
-     * Uses independent graph cycles as a robust pre-initialization check.
-     * For each pair, find an alternate path that excludes all parallel edges
-     * for that pair. Tree edges have no independent evidence and are retained.
-     */
-    /**
-     * Uses independent graph cycles as a robust pre-initialization check.
-     * The adjacency structure is built once and reused for every candidate,
-     * avoiding per-edge graph allocations on mobile.
-     */
-    private fun rejectCycleInconsistentEdges(
-        frames: List<Int>,
-        edges: List<Edge>,
-        thresholdDegrees: Double
-    ): List<Edge> {
-        data class Step(val edge: Edge, val from: Int, val to: Int)
-        val adjacency = frames.associateWith { mutableListOf<Step>() }
-        for (edge in edges) {
-            adjacency[edge.firstFrame]?.add(Step(edge, edge.firstFrame, edge.secondFrame))
-            adjacency[edge.secondFrame]?.add(Step(edge, edge.secondFrame, edge.firstFrame))
-        }
-
-        val threshold = Math.toRadians(thresholdDegrees.coerceAtLeast(0.1))
-        val kept = ArrayList<Edge>(edges.size)
-        for (candidate in edges) {
-            val parent = HashMap<Int, Step>()
-            val seen = hashSetOf(candidate.firstFrame)
-            val queue = ArrayDeque<Int>()
-            queue.add(candidate.firstFrame)
-            while (queue.isNotEmpty() && candidate.secondFrame !in seen) {
-                val current = queue.removeFirst()
-                for (step in adjacency[current].orEmpty()) {
-                    val samePair =
-                        (step.edge.firstFrame == candidate.firstFrame && step.edge.secondFrame == candidate.secondFrame) ||
-                        (step.edge.firstFrame == candidate.secondFrame && step.edge.secondFrame == candidate.firstFrame)
-                    if (!samePair && seen.add(step.to)) {
-                        parent[step.to] = step
-                        queue.add(step.to)
-                    }
-                }
-            }
-            if (candidate.secondFrame !in seen) {
-                kept += candidate
-                continue
-            }
-
-            val path = ArrayList<Step>()
-            var node = candidate.secondFrame
-            while (node != candidate.firstFrame) {
-                val step = parent[node] ?: break
-                path += step
-                node = step.from
-            }
-            path.reverse()
-            var pathRotation = identity()
-            for (step in path) {
-                val directed = if (step.from == step.edge.firstFrame) {
-                    step.edge.relativeRotation
-                } else {
-                    transpose(step.edge.relativeRotation)
-                }
-                pathRotation = multiply(directed, pathRotation)
-            }
-            val cycleError = norm3(
-                logRotation(multiply(transpose(candidate.relativeRotation), pathRotation))
-            )
-            if (cycleError <= threshold) kept += candidate
-        }
-        return kept
     }
 
     private fun largestComponent(frames: List<Int>, edges: List<Edge>): Set<Int> {
@@ -253,6 +178,91 @@ internal object GlobalRotationAverager {
         val r1 = rotations.getValue(edge.firstFrame)
         val r2 = rotations.getValue(edge.secondFrame)
         return scale(logRotation(multiply(transpose(r2), multiply(edge.relativeRotation, r1))), -1.0)
+    }
+
+    /**
+     * ADMM solution of the COLMAP/GLOMAP least-absolute-deviation subproblem
+     * min_x ||A x - b||_1 for the anchored view-graph incidence matrix.
+     * The x-update solves (A^T A)x=A^T(b+z-u) with the sparse graph Laplacian.
+     */
+    private fun solveL1Admm(
+        count: Int, index: Map<Int, Int>, edges: List<Edge>,
+        residuals: List<DoubleArray>, maxIterations: Int
+    ): Array<DoubleArray>? {
+        val root = 0
+        val freeCount = count - 1
+        val result = Array(count) { DoubleArray(3) }
+        if (freeCount <= 0) return result
+        val diagonal = DoubleArray(freeCount)
+        val links = ArrayList<Triple<Int, Int, Double>>(edges.size)
+        for (edge in edges) {
+            val a = index[edge.firstFrame] ?: return null
+            val b = index[edge.secondFrame] ?: return null
+            if (a != root) diagonal[a - 1] += 1.0
+            if (b != root) diagonal[b - 1] += 1.0
+            if (a != root && b != root) links += Triple(a - 1, b - 1, 1.0)
+        }
+        if (diagonal.any { it <= 0.0 }) return null
+
+        fun aTimes(x: DoubleArray): DoubleArray = DoubleArray(edges.size) { e ->
+            val a = index.getValue(edges[e].firstFrame)
+            val b = index.getValue(edges[e].secondFrame)
+            (if (b == root) 0.0 else x[b - 1]) -
+                (if (a == root) 0.0 else x[a - 1])
+        }
+        fun atTimes(y: DoubleArray): DoubleArray {
+            val out = DoubleArray(freeCount)
+            edges.forEachIndexed { e, edge ->
+                val a = index.getValue(edge.firstFrame)
+                val b = index.getValue(edge.secondFrame)
+                if (a != root) out[a - 1] -= y[e]
+                if (b != root) out[b - 1] += y[e]
+            }
+            return out
+        }
+
+        val rho = 1.0
+        val alpha = 1.0
+        val sqrtRows = sqrt(edges.size.toDouble())
+        val sqrtCols = sqrt(freeCount.toDouble())
+        for (axis in 0..2) {
+            val b = DoubleArray(edges.size) { residuals[it][axis] }
+            val bNorm = sqrt(dot(b, b))
+            var z = DoubleArray(edges.size)
+            var u = DoubleArray(edges.size)
+            var x = DoubleArray(freeCount)
+            for (iteration in 0 until maxIterations.coerceAtLeast(1)) {
+                val rhs = atTimes(DoubleArray(edges.size) { e -> b[e] + z[e] - u[e] })
+                x = conjugateGradient(diagonal, links, rhs) ?: return null
+                val ax = aTimes(x)
+                val axHat = DoubleArray(edges.size) { e ->
+                    alpha * ax[e] + (1.0 - alpha) * (z[e] + b[e])
+                }
+                val zOld = z
+                z = DoubleArray(edges.size) { e ->
+                    val value = axHat[e] - b[e] + u[e]
+                    when {
+                        value > 1.0 / rho -> value - 1.0 / rho
+                        value < -1.0 / rho -> value + 1.0 / rho
+                        else -> 0.0
+                    }
+                }
+                for (e in u.indices) u[e] += axHat[e] - z[e] - b[e]
+                val primal = DoubleArray(edges.size) { e -> ax[e] - z[e] - b[e] }
+                val deltaZ = DoubleArray(edges.size) { e -> z[e] - zOld[e] }
+                val dualVector = atTimes(deltaZ)
+                val rNorm = sqrt(dot(primal, primal))
+                val sNorm = rho * sqrt(dot(dualVector, dualVector))
+                val axNorm = sqrt(dot(ax, ax))
+                val zNorm = sqrt(dot(z, z))
+                val atUNorm = sqrt(dot(atTimes(u), atTimes(u)))
+                val epsPri = sqrtRows * 1e-4 + 1e-2 * max(bNorm, max(axNorm, zNorm))
+                val epsDual = sqrtCols * 1e-4 + 1e-2 * rho * atUNorm
+                if (rNorm < epsPri && sNorm < epsDual) break
+            }
+            for (i in 1 until count) result[i][axis] = x[i - 1]
+        }
+        return result
     }
 
     private fun solveTangentUpdates(
