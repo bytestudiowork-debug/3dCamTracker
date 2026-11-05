@@ -34,12 +34,29 @@ jobs:
           packages: "platform-tools"
 
       - name: Install SDK platform, build-tools, NDK + CMake
+        shell: bash
         run: |
-          sdkmanager --install \
-            "platforms;android-34" \
-            "build-tools;34.0.0" \
-            "ndk;27.0.12077973" \
+          set -euo pipefail
+          packages=(
+            "platforms;android-34"
+            "build-tools;34.0.0"
+            "ndk;27.0.12077973"
             "cmake;3.22.1"
+          )
+
+          # Retry interrupted downloads; clear incomplete SDK cache between attempts.
+          for attempt in 1 2 3; do
+            echo "Android SDK installation attempt ${attempt}/3"
+            if yes | sdkmanager --install "${packages[@]}"; then
+              exit 0
+            fi
+            if [ "${attempt}" -lt 3 ]; then
+              rm -rf "${ANDROID_SDK_ROOT}/.temp" "${HOME}/.android/cache"
+              sleep $((attempt * 10))
+            fi
+          done
+          echo "Android SDK installation failed after 3 attempts."
+          exit 1
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
