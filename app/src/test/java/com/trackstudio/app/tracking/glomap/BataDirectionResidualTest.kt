@@ -39,8 +39,9 @@ class BataDirectionResidualTest {
 
     @Test
     fun initializedScaleUsesGlomapProjectionAndLowerBound() {
+        // dot((2,0,0), (4,0,0)) / squaredNorm((4,0,0)) = 8 / 16 = 0.5.
         assertEquals(
-            2.0,
+            0.5,
             BataDirectionResidual.initializeScale(
                 translation = doubleArrayOf(2.0, 0.0, 0.0),
                 point = doubleArrayOf(4.0, 0.0, 0.0),
