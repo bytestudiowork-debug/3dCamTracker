@@ -1,5 +1,6 @@
 #include <array>
 #include <iostream>
+#include <initializer_list>
 #include <memory>
 #include <ceres/ceres.h>
 

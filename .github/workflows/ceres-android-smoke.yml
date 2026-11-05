@@ -45,7 +45,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/ceres-host-install"
           cmake --build "$RUNNER_TEMP/ceres-smoke-host" --parallel 2
-          "$RUNNER_TEMP/ceres-smoke-host/ceres_sparse_smoke"
+          LD_LIBRARY_PATH="$RUNNER_TEMP/ceres-host-install/lib:$LD_LIBRARY_PATH" "$RUNNER_TEMP/ceres-smoke-host/ceres_sparse_smoke"
 
   android-abi-build:
     runs-on: ubuntu-latest
@@ -70,7 +70,7 @@ jobs:
           ABI: ${{ matrix.abi }}
         run: |
           cmake -S "$RUNNER_TEMP/ceres" -B "$RUNNER_TEMP/ceres-android" \
-            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_SDK_ROOT/ndk/27.0.12077973/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI="$ABI" -DANDROID_PLATFORM=android-26 \
             -DANDROID_STL=c++_shared -DEigen3_DIR=/usr/share/eigen3/cmake \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/ceres-install" \
@@ -83,7 +83,7 @@ jobs:
           cmake --build "$RUNNER_TEMP/ceres-android" --parallel 2
           cmake --install "$RUNNER_TEMP/ceres-android"
           cmake -S native/ceres-smoke -B "$RUNNER_TEMP/smoke-android" \
-            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_SDK_ROOT/ndk/27.0.12077973/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI="$ABI" -DANDROID_PLATFORM=android-26 \
             -DANDROID_STL=c++_shared -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/ceres-install" \
             -DCMAKE_BUILD_TYPE=Release
