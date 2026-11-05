@@ -155,6 +155,24 @@ internal class IncrementalSfMSolver(
                 )
             }
 
+            // GLOMAP-style global rotation averaging over the verified temporal view graph.
+            // Keep this global solution separate from incremental PnP poses until global
+            // positioning can jointly estimate translations in the same coordinate gauge.
+            val viewGraphRotation = GlobalViewGraphSolver.solve(
+                evaluations = evaluations,
+                policy = InitialPairPolicy()
+            )
+            onProgress(
+                CameraTrackingProgress(
+                    frameIndex = frameCount,
+                    frameCount = frameCount,
+                    phase = "Global rotation averaging · view graph",
+                    overallFraction = 0.355f,
+                    completedFrames = processedFrameCount,
+                    totalFrames = frameCount
+                )
+            )
+
             val selection = InitialPairSelector.select(evaluations.map { it.candidate })
             val selected = selection.selected
                 ?: throw IllegalStateException(
@@ -724,7 +742,11 @@ internal class IncrementalSfMSolver(
                 landmarks = landmarksByTrack.values.toList(),
                 triangulationStats = finalStats,
                 initialPairFrames = selected.firstFrame to selected.secondFrame,
-                registeredCameraCount = registeredFrames
+                registeredCameraCount = registeredFrames,
+                globalRotationsByFrame = viewGraphRotation?.rotationsByFrame.orEmpty(),
+                viewGraphEdgeCount = viewGraphRotation?.inputEdgeCount ?: 0,
+                viewGraphAcceptedEdgeCount = viewGraphRotation?.acceptedEdgeCount ?: 0,
+                globalRotationIterations = viewGraphRotation?.iterations ?: 0
             )
         } finally {
             cache.values.forEach { it.descriptors.release() }

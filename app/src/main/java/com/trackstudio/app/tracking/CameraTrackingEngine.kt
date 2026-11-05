@@ -85,5 +85,10 @@ data class CameraTrackingResult(
     val landmarks: List<CameraLandmark> = emptyList(),
     val triangulationStats: TriangulationStats = TriangulationStats(),
     val initialPairFrames: Pair<Int, Int>? = null,
-    val registeredCameraCount: Int = 0
+    val registeredCameraCount: Int = 0,
+    /** Global rotations estimated from the verified sparse view graph; not yet fused with PnP translations. */
+    val globalRotationsByFrame: Map<Int, DoubleArray> = emptyMap(),
+    val viewGraphEdgeCount: Int = 0,
+    val viewGraphAcceptedEdgeCount: Int = 0,
+    val globalRotationIterations: Int = 0
 )
