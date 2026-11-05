@@ -45,10 +45,12 @@ class GlomapGlobalPositioningInitializerTest {
             tracks = tracks
         )
         assertEquals(setOf(10, 20), result.constrainedFrameIds)
+        val referenceRandom = GlomapMt19937(1)
+        val expectedFirstCenter = referenceRandom.randomVector3d(-1.0, 1.0, 100.0)
         assertArrayEquals(
-            doubleArrayOf(99.436961646053112, 86.511472273633094, -74.375110445538795),
+            expectedFirstCenter,
             result.frameTranslationsById.getValue(10),
-            1e-12
+            0.0
         )
         assertArrayEquals(
             doubleArrayOf(1.0, 2.0, 3.0),
@@ -85,12 +87,14 @@ class GlomapGlobalPositioningInitializerTest {
                 frame(2, center = doubleArrayOf(6.0, 7.0, 8.0), translation = doubleArrayOf(9.0, 9.0, 9.0))
             ),
             images = listOf(GlomapGlobalPositioningInitializer.ImageInput(11, 1, true)),
-            imagePairs = emptyList(),
+            imagePairs = listOf(
+                GlomapGlobalPositioningInitializer.ImagePairInput(11, 22, true)
+            ),
             tracks = emptyList(),
             options = GlomapGlobalPositioningInitializer.Options(generateRandomPositions = false)
         )
         assertArrayEquals(doubleArrayOf(3.0, 4.0, 5.0), result.frameTranslationsById.getValue(1), 0.0)
-        assertArrayEquals(doubleArrayOf(9.0, 9.0, 9.0), result.frameTranslationsById.getValue(2), 0.0)
+        assertArrayEquals(doubleArrayOf(6.0, 7.0, 8.0), result.frameTranslationsById.getValue(2), 0.0)
         assertEquals(0, result.randomEngineSamplesConsumed)
     }
 
