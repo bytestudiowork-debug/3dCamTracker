@@ -2,9 +2,10 @@
 
 Pinned algorithm source:
 - GLOMAP: `99806d0869f802fad218516a2e027793e7ca687d`
-- COLMAP: `e6644e744488a13f3aba82958500db9066341205`
+- COLMAP's matching upstream dependency (declared by that GLOMAP revision): `b6b7b54eca6078070f73a3f0a084f79c629a6f10`
+- Separate newer COLMAP reference examined for API/porting: `e6644e744488a13f3aba82958500db9066341205`
 
-## Decision: use upstream Ceres, do not replace it
+## Decision: preserve the upstream optimizer, remove the GPL-only dependency requirement
 
 The pinned `GlobalPositioner::Solve` creates a Ceres problem and calls
 `ceres::Solve`. Its default track-based path uses:
@@ -23,51 +24,93 @@ The pinned `GlobalPositioner::Solve` creates a Ceres problem and calls
 - Result conversion maps optimized camera centers back to pose translations
   using the upstream rotation and rig-scale equations.
 
-A Kotlin least-squares implementation, a different Ceres linear solver, or a
-fallback to dense/iterative optimization would not be an equivalent port.
-The Android implementation must retain the Ceres configuration above.
+The pinned GLOMAP CMake currently calls
+`find_package(Ceres REQUIRED COMPONENTS SuiteSparse)`, and its vcpkg
+manifest also requests SuiteSparse. That is not acceptable for the
+proprietary TrackStudio distribution without a commercial SuiteSparse
+licence: Ceres documents that its required SuiteSparse CHOLMOD supernodal
+and SPQR components are GPL/commercial.
 
-## Android dependency findings
+Ceres 2.2+ supports visibility-based preconditioning with Eigen and CXSparse.
+Ceres 2.3 supports Eigen sparse Cholesky as a selectable sparse backend.
+Therefore the first no-GPL route to test is to patch only the dependency
+selection in the vendored GLOMAP build:
+- build Ceres with `WITH_EIGENSPARSE=ON` and `WITH_SUITESPARSE=OFF`;
+- change the GLOMAP Ceres package requirement from `SuiteSparse` to
+  `EigenSparse`;
+- remove SuiteSparse from the GLOMAP dependency manifest;
+- retain the upstream `SPARSE_SCHUR` + `CLUSTER_TRIDIAGONAL` options and
+  all optimizer math/settings unchanged.
+
+This is a build-system/licensing adaptation, not an algorithm substitution.
+It is not considered validated until an Android-native smoke test runs the
+exact solver/preconditioner combination and checks the Ceres summary reports
+the requested solver and preconditioner as actually used. If it fails, stop
+and investigate a permissively licensed sparse backend; do not silently
+switch to `ITERATIVE_SCHUR` or another preconditioner.
+
+## Android and upstream build constraints
 
 The app currently has NDK 27.0.12077973, CMake 3.22.1, C++17, and two ABIs:
-`arm64-v8a` and `armeabi-v7a`. Its native CMake target currently builds only
-the proxy engine; it does not include Ceres, Eigen, Abseil, or SuiteSparse.
+`arm64-v8a` and `armeabi-v7a`. Its native target currently builds only the
+proxy engine.
 
-Ceres 2.2.0 is a suitable C++17-era baseline to evaluate against this project:
-its CMake minimum is compatible with the app's CMake 3.22.1. Ceres 2.2+
-requires Eigen and Abseil. The official Ceres Android instructions support
-NDK r20+ and require the Ceres binaries to use the same Android ABI, API level,
-and C++ STL as the application.
+Ceres 2.3 is a candidate baseline: it requires CMake 3.22+, Eigen and
+Abseil, supports Android NDK r20+, and can use the same `c++_shared` STL
+and target ABI/API level as the app. It must be cross-built separately for
+each app ABI.
 
-The exact GLOMAP solver configuration is more demanding than merely building
-Ceres with Eigen sparse support: Ceres documents that
-`CLUSTER_TRIDIAGONAL` requires a sparse Cholesky backend such as SuiteSparse.
-Therefore, do not silently build a reduced Ceres configuration and keep the
-same-looking solver options. The native dependency build must provide and
-verify the SuiteSparse capability required by the selected upstream options.
+The pinned GLOMAP top-level `CMakeLists.txt` declares CMake 3.28, even
+though its README discusses lower CMake versions when using installed
+dependencies. Its source also requires Boost and OpenMP, and its third-party
+CMake declares PoseLib and COLMAP dependencies. The app's current CMake
+3.22.1 therefore cannot configure the pinned GLOMAP project unchanged.
+We must either use a compatible CMake 3.28 SDK package or maintain a narrowly
+scoped Android build entry point that avoids unsupported top-level
+configuration features. Do not change the app's CMake version until the
+native build path is demonstrated.
+
+The pinned GLOMAP revision fetches COLMAP
+`b6b7b54eca6078070f73a3f0a084f79c629a6f10` (COLMAP 3.14 development
+snapshot, Nov 20 2025). The separate COLMAP reference revision currently
+listed in the port notes, `e6644e744488a13f3aba82958500db9066341205`,
+is a later 4.3 development snapshot. These are not interchangeable pins.
+For source parity with this GLOMAP revision, use its declared COLMAP pin
+first; evaluate the later COLMAP revision separately rather than mixing
+headers and libraries from different revisions.
+
+A full desktop COLMAP build is not the Android target. The Android build
+must select the core scene/geometry/feature/estimation/SfM code required by
+GLOMAP and disable GUI, OpenGL, CUDA, MVS, downloads, and other irrelevant
+desktop features where their dependencies are not needed. The exact minimal
+target graph still needs to be established from the pinned source and
+verified by an NDK build.
 
 ## Required implementation sequence
 
-1. Pin and cross-build Ceres plus its required dependencies for both app ABIs.
-   Disable CUDA; the mobile target is CPU-only. Preserve the C++ shared STL
-   and Android API compatibility.
-2. Add a native smoke test that constructs a tiny Ceres problem using the
-   same `SPARSE_SCHUR` / `CLUSTER_TRIDIAGONAL` options and confirms that the
-   selected sparse backend is actually available on-device.
-3. Port the upstream GLOMAP parameter-block storage and lifetime rules. Scale
-   storage must remain stable after its addresses are registered with Ceres.
-4. Port residual registration, loss ownership, lower bounds, parameter groups,
-   constant blocks, gauge fixing, solver options, and result conversion.
-5. Compare a deterministic small fixture against the pinned upstream GLOMAP
+1. Vendor/pin the matching GLOMAP and COLMAP sources and record every
+   dependency revision and licence.
+2. Cross-build Eigen, Abseil, Ceres and required core dependencies for both
+   Android ABIs. Keep GPL SuiteSparse components out of the dependency graph.
+3. Patch only GLOMAP's CMake dependency requirement to EigenSparse; preserve
+   its algorithm source and options.
+4. Add a native smoke test using the exact `SPARSE_SCHUR` /
+   `CLUSTER_TRIDIAGONAL` configuration and assert the actual solver and
+   preconditioner used in the Ceres summary.
+5. Port upstream GLOMAP parameter-block storage/lifetime, residual
+   registration, loss ownership, bounds, parameter groups, gauge fixing,
+   solver settings, and result conversion.
+6. Compare a deterministic fixture against the pinned upstream GLOMAP
    implementation, including optimized translations, point values, solver
    usability, and residual summaries.
-6. Only after the native solver passes the fixture should it be exposed through
-   the standalone `GlomapReconstructionEngine` and made available for device
-   testing.
+7. Build the required COLMAP core and GLOMAP pipeline for both ABIs, then
+   expose them through the standalone `GlomapReconstructionEngine`.
+   Keep the current engine available as a fallback until device validation.
 
 ## Current boundary
 
-The Kotlin initializer, BATA residual, and point-to-camera problem builder are
-pre-optimization stages only. They are not a solver and must not be presented
-as a functioning GLOMAP reconstruction engine. No Android solver dependency or
-solver implementation is claimed complete by this document.
+The Kotlin initializer, BATA residual, and point-to-camera problem builder
+are pre-optimization stages only. They are not a solver and must not be
+presented as a functioning GLOMAP reconstruction engine. No Android Ceres,
+COLMAP, or GLOMAP native library integration is claimed complete by this
+document.
