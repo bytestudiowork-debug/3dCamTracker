@@ -59,6 +59,13 @@ fun ViewerCanvas(
     trackingPointSizeDp: Float = 3f,
     trackingPointOutline: Boolean = true,
     trackingVerificationSegments: List<TrackingVerificationSegment> = emptyList(),
+    verificationColor: Color = Color(0xFF00E5FF),
+    verificationRotationX: Float = 0f,
+    verificationRotationY: Float = 0f,
+    verificationRotationZ: Float = 0f,
+    verificationScale: Float = 1f,
+    verificationSize: Float = 1f,
+    verificationStrokeDp: Float = 1.8f,
     isLoading: Boolean,
     modifier: Modifier = Modifier,
     requestedZoom: Float? = null,
@@ -247,7 +254,7 @@ fun ViewerCanvas(
                 val markerHalfSize = with(LocalDensity.current) { trackingPointSizeDp.coerceIn(2f, 5.5f).dp.toPx() }
                 val markerStroke = with(LocalDensity.current) { (trackingPointSizeDp * 0.34f).coerceIn(0.9f, 1.5f).dp.toPx() }
                 val markerOutline = markerStroke + with(LocalDensity.current) { 1.1.dp.toPx() }
-                val verificationStroke = with(LocalDensity.current) { 1.8.dp.toPx() }
+                val verificationStroke = with(LocalDensity.current) { verificationStrokeDp.coerceIn(1f, 5f).dp.toPx() }
                 Canvas(
                     modifier = Modifier.fillMaxSize().graphicsLayer {
                         scaleX = transform.zoom
@@ -259,14 +266,28 @@ fun ViewerCanvas(
                     val fitScale = min(size.width / bitmap.width, size.height / bitmap.height)
                     val imageLeft = (size.width - bitmap.width * fitScale) * 0.5f
                     val imageTop = (size.height - bitmap.height * fitScale) * 0.5f
-                    trackingVerificationSegments.forEach { segment ->
-                        drawLine(
-                            color = Color(segment.colorArgb),
-                            start = Offset(imageLeft + segment.startX * fitScale, imageTop + segment.startY * fitScale),
-                            end = Offset(imageLeft + segment.endX * fitScale, imageTop + segment.endY * fitScale),
-                            strokeWidth = verificationStroke,
-                            cap = androidx.compose.ui.graphics.StrokeCap.Round
-                        )
+                    if (trackingVerificationSegments.isNotEmpty()) {
+                        val points = trackingVerificationSegments.flatMap { listOf(it.startX to it.startY, it.endX to it.endY) }
+                        val centerX = points.map { it.first }.average().toFloat()
+                        val centerY = points.map { it.second }.average().toFloat()
+                        val rx = Math.toRadians(verificationRotationX.toDouble()).toFloat()
+                        val ry = Math.toRadians(verificationRotationY.toDouble()).toFloat()
+                        val rz = Math.toRadians(verificationRotationZ.toDouble()).toFloat()
+                        val sx = kotlin.math.cos(ry) * kotlin.math.cos(rz)
+                        val shearX = kotlin.math.sin(rx) * 0.35f
+                        val sy = kotlin.math.cos(rx) * kotlin.math.cos(rz)
+                        val shearY = kotlin.math.sin(ry) * 0.35f
+                        val displayScale = verificationScale.coerceIn(0.25f, 3f) * verificationSize.coerceIn(0.5f, 2f)
+                        fun transformed(x: Float, y: Float): Offset {
+                            val dx = (x - centerX) * displayScale
+                            val dy = (y - centerY) * displayScale
+                            val rotatedX = dx * sx - dy * kotlin.math.sin(rz) + dy * shearX
+                            val rotatedY = dx * kotlin.math.sin(rz) + dy * sy + dx * shearY
+                            return Offset(imageLeft + (centerX + rotatedX) * fitScale, imageTop + (centerY + rotatedY) * fitScale)
+                        }
+                        trackingVerificationSegments.forEach { segment ->
+                            drawLine(color = verificationColor, start = transformed(segment.startX, segment.startY), end = transformed(segment.endX, segment.endY), strokeWidth = verificationStroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                        }
                     }
                     trackingPoints.forEach { point ->
                         val x = imageLeft + point.x.toFloat() * fitScale

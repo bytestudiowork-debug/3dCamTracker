@@ -103,6 +103,13 @@ fun ViewerScreen(
     var markerColorArgb by remember { mutableIntStateOf(0xFF00E5FF.toInt()) }
     var markerSizeDp by remember { mutableFloatStateOf(3f) }
     var markerOutline by remember { mutableStateOf(true) }
+    var cubeColorArgb by remember { mutableIntStateOf(0xFF00E5FF.toInt()) }
+    var cubeRotationX by remember { mutableFloatStateOf(0f) }
+    var cubeRotationY by remember { mutableFloatStateOf(0f) }
+    var cubeRotationZ by remember { mutableFloatStateOf(0f) }
+    var cubeScale by remember { mutableFloatStateOf(1f) }
+    var cubeSize by remember { mutableFloatStateOf(1f) }
+    var cubeLineWidth by remember { mutableFloatStateOf(1.8f) }
     var activeToolPopup by remember { mutableStateOf<String?>(null) }
 
     BoxWithConstraints(
@@ -163,6 +170,13 @@ fun ViewerScreen(
                         markerColorArgb = markerColorArgb,
                         markerSizeDp = markerSizeDp,
                         markerOutline = markerOutline,
+                        cubeColorArgb = cubeColorArgb,
+                        cubeRotationX = cubeRotationX,
+                        cubeRotationY = cubeRotationY,
+                        cubeRotationZ = cubeRotationZ,
+                        cubeScale = cubeScale,
+                        cubeSize = cubeSize,
+                        cubeLineWidth = cubeLineWidth,
                         isLoading = state.isLoadingFrame,
                         errorMessage = state.errorMessage,
                         zoom = zoom,
@@ -257,6 +271,20 @@ fun ViewerScreen(
                 markerColorArgb = markerColorArgb,
                 markerSizeDp = markerSizeDp,
                 markerOutline = markerOutline,
+                cubeColorArgb = cubeColorArgb,
+                cubeRotationX = cubeRotationX,
+                cubeRotationY = cubeRotationY,
+                cubeRotationZ = cubeRotationZ,
+                cubeScale = cubeScale,
+                cubeSize = cubeSize,
+                cubeLineWidth = cubeLineWidth,
+                onCubeColorChanged = { cubeColorArgb = it },
+                onCubeRotationXChanged = { cubeRotationX = it },
+                onCubeRotationYChanged = { cubeRotationY = it },
+                onCubeRotationZChanged = { cubeRotationZ = it },
+                onCubeScaleChanged = { cubeScale = it },
+                onCubeSizeChanged = { cubeSize = it },
+                onCubeLineWidthChanged = { cubeLineWidth = it },
                 onMarkerColorChanged = { markerColorArgb = it },
                 onMarkerSizeChanged = { markerSizeDp = it },
                 onMarkerOutlineChanged = { markerOutline = it },
@@ -278,6 +306,13 @@ private fun ViewerPanel(
     markerColorArgb: Int,
     markerSizeDp: Float,
     markerOutline: Boolean,
+    cubeColorArgb: Int,
+    cubeRotationX: Float,
+    cubeRotationY: Float,
+    cubeRotationZ: Float,
+    cubeScale: Float,
+    cubeSize: Float,
+    cubeLineWidth: Float,
     isLoading: Boolean,
     errorMessage: String?,
     zoom: Float,
@@ -309,6 +344,13 @@ private fun ViewerPanel(
             trackingPointSizeDp = markerSizeDp,
             trackingPointOutline = markerOutline,
             trackingVerificationSegments = if (showVerificationOverlay) verificationSegments else emptyList(),
+            verificationColor = Color(cubeColorArgb.toLong() and 0xFFFFFFFFL),
+            verificationRotationX = cubeRotationX,
+            verificationRotationY = cubeRotationY,
+            verificationRotationZ = cubeRotationZ,
+            verificationScale = cubeScale,
+            verificationSize = cubeSize,
+            verificationStrokeDp = cubeLineWidth,
             isLoading = isLoading,
             requestedZoom = zoom,
             onZoomChanged = onZoomChanged,

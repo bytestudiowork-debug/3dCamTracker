@@ -102,11 +102,6 @@ internal object TrackingVerificationProjector {
             4 to 5, 5 to 6, 6 to 7, 7 to 4,
             0 to 4, 1 to 5, 2 to 6, 3 to 7
         )
-        val axes = listOf(
-            Point3(anchor.x + size * 1.8, anchor.y, anchor.z) to 0xFFFF5252L,
-            Point3(anchor.x, anchor.y + size * 1.8, anchor.z) to 0xFF69F0AEL,
-            Point3(anchor.x, anchor.y, anchor.z + size * 1.8) to 0xFF448AFFL
-        )
         val output = linkedMapOf<Int, List<TrackingVerificationSegment>>()
         poses.asSequence()
             .filter { it.status == CameraPoseStatus.REFERENCE ||
@@ -115,19 +110,12 @@ internal object TrackingVerificationProjector {
             .sortedBy { it.frameIndex }
             .forEach { pose ->
                 val projected = vertices.map { project(it, pose) }
-                val lines = ArrayList<TrackingVerificationSegment>(15)
+                val lines = ArrayList<TrackingVerificationSegment>(12)
                 edges.forEach { (a, b) ->
                     val p1 = projected[a]
                     val p2 = projected[b]
                     if (p1 != null && p2 != null) lines += TrackingVerificationSegment(
                         p1.first, p1.second, p2.first, p2.second, 0xFF00E5FFL
-                    )
-                }
-                val origin = project(anchor, pose)
-                axes.forEach { (point, color) ->
-                    val end = project(point, pose)
-                    if (origin != null && end != null) lines += TrackingVerificationSegment(
-                        origin.first, origin.second, end.first, end.second, color
                     )
                 }
                 if (lines.size >= 3) output[pose.frameIndex] = lines

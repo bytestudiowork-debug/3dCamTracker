@@ -57,6 +57,20 @@ internal fun TrackingToolPopup(
     markerColorArgb: Int,
     markerSizeDp: Float,
     markerOutline: Boolean,
+    cubeColorArgb: Int,
+    cubeRotationX: Float,
+    cubeRotationY: Float,
+    cubeRotationZ: Float,
+    cubeScale: Float,
+    cubeSize: Float,
+    cubeLineWidth: Float,
+    onCubeColorChanged: (Int) -> Unit,
+    onCubeRotationXChanged: (Float) -> Unit,
+    onCubeRotationYChanged: (Float) -> Unit,
+    onCubeRotationZChanged: (Float) -> Unit,
+    onCubeScaleChanged: (Float) -> Unit,
+    onCubeSizeChanged: (Float) -> Unit,
+    onCubeLineWidthChanged: (Float) -> Unit,
     onMarkerColorChanged: (Int) -> Unit,
     onMarkerSizeChanged: (Float) -> Unit,
     onMarkerOutlineChanged: (Boolean) -> Unit,
@@ -101,7 +115,20 @@ internal fun TrackingToolPopup(
             ) {
                 if (title == "3D Test") {
                     PopupSwitch("Show diagnostic cube", showCube, onCubeChanged)
+                    Text("Cube colour", color = TextPrimary, fontSize = 13.sp)
+                    CubeColourSelector(cubeColorArgb, onCubeColorChanged)
+                    CubeAngleSlider("Rotation X", cubeRotationX, onCubeRotationXChanged)
+                    CubeAngleSlider("Rotation Y", cubeRotationY, onCubeRotationYChanged)
+                    CubeAngleSlider("Rotation Z", cubeRotationZ, onCubeRotationZChanged)
+                    CubeValueSlider("Scale", cubeScale, 0.25f..3f, onCubeScaleChanged, "%.2fx")
+                    CubeValueSlider("Size", cubeSize, 0.5f..2f, onCubeSizeChanged, "%.2fx")
+                    CubeValueSlider("Line thickness", cubeLineWidth, 1f..5f, onCubeLineWidthChanged, "%.1f dp")
                     PopupMetric("Projected wireframe lines", verificationLineCount.toString())
+                    androidx.compose.material3.TextButton(onClick = {
+                        onCubeColorChanged(0xFF00E5FF.toInt())
+                        onCubeRotationXChanged(0f); onCubeRotationYChanged(0f); onCubeRotationZChanged(0f)
+                        onCubeScaleChanged(1f); onCubeSizeChanged(1f); onCubeLineWidthChanged(1.8f)
+                    }) { Text("Reset cube settings", color = AccentPrimary) }
                     Text(
                         "This diagnostic cube is projected through the solved camera poses. It is not a physical object track. The current reconstruction uses approximate camera intrinsics and provisional translation scale, so visual alignment is a diagnostic—not a final matchmove guarantee.",
                         color = TextSecondary, fontSize = 11.sp
@@ -129,6 +156,34 @@ internal fun TrackingToolPopup(
 }
 
 
+@Composable
+private fun CubeColourSelector(selectedArgb: Int, onSelected: (Int) -> Unit) {
+    val colours = listOf(0xFF00E5FF.toInt(), 0xFFFFD740.toInt(), 0xFF76FF03.toInt(), 0xFFFF4081.toInt(), 0xFFB388FF.toInt(), 0xFFFFFFFF.toInt(), 0xFFFF8A50.toInt(), 0xFF448AFF.toInt())
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
+        colours.forEach { argb ->
+            val selected = argb == selectedArgb
+            Box(Modifier.size(25.dp).clip(CircleShape).background(Color(argb.toLong() and 0xFFFFFFFFL)).border(if (selected) 2.dp else 1.dp, if (selected) TextPrimary else TextSecondary.copy(alpha = 0.45f), CircleShape).clickable { onSelected(argb) })
+        }
+    }
+}
+
+@Composable
+private fun CubeAngleSlider(label: String, value: Float, onChange: (Float) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, color = TextPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f))
+        Text("${value.toInt()}°", color = AccentPrimary, fontSize = 11.sp)
+    }
+    Slider(value = value.coerceIn(0f, 360f), onValueChange = onChange, valueRange = 0f..360f)
+}
+
+@Composable
+private fun CubeValueSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit, format: String) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, color = TextPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f))
+        Text(String.format(java.util.Locale.US, format, value), color = AccentPrimary, fontSize = 11.sp)
+    }
+    Slider(value = value.coerceIn(range.start, range.endInclusive), onValueChange = onChange, valueRange = range)
+}
 @Composable
 private fun MarkerColourSelector(selectedArgb: Int, onSelected: (Int) -> Unit) {
     val colours = listOf(0xFF00E5FF.toInt(), 0xFFFFD740.toInt(), 0xFF76FF03.toInt(), 0xFFFF4081.toInt(), 0xFFB388FF.toInt(), 0xFFFFFFFF.toInt())
