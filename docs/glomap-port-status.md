@@ -4,6 +4,23 @@ Pinned upstream revisions:
 - GLOMAP: `99806d0869f802fad218516a2e027793e7ca687d`
 - COLMAP: `e6644e744488a13f3aba82958500db9066341205`
 
+## Global positioning: random initialization and point-to-camera assembly
+
+Upstream initialization source: `GlobalPositioner::InitializeRandomPositions` and the random-point initialization in `AddPointToCameraConstraints` in `glomap/estimators/global_positioning.cc`.
+
+Android implementation:
+- `tracking/glomap/GlomapMt19937.kt`: MT19937 engine seeded with the upstream default (1), plus the 53-bit canonical uniform sampling used by the pinned reference build.
+- `tracking/glomap/GlomapGlobalPositioningInitializer.kt`: constrained-frame discovery from valid image pairs and sufficiently long tracks, camera-center initialization, and random 3D point initialization.
+
+Preserved initialization behavior:
+- Valid image pairs constrain both endpoint frames.
+- Tracks shorter than 3 observations do not constrain frames or receive random points.
+- Only registered images in eligible tracks add constrained frames.
+- With random position generation and position optimization enabled, constrained frame centers and eligible track points use `100 * uniform[-1,1]` per coordinate; unconstrained frames use their camera center from the existing pose.
+- When random positions are disabled or positions are not optimized, only constrained frames are converted to camera centers.
+- Camera positions and track points consume one shared seeded MT19937 stream in source call order.
+- Input lists preserve caller-provided traversal order. Upstream uses unordered maps, so exact assignment of random samples to IDs requires matching that upstream container iteration order.
+
 ## Global positioning: point-to-camera problem assembly
 
 Upstream sources:
