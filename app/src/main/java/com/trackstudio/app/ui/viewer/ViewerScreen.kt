@@ -34,6 +34,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -98,7 +99,10 @@ fun ViewerScreen(
     var fullscreen by remember { mutableStateOf(false) }
     var panelOpen by remember { mutableStateOf(true) }
     var showVerificationOverlay by remember { mutableStateOf(true) }
-    var showTrackPointsOverlay by remember { mutableStateOf(false) }
+    var showTrackPointsOverlay by remember { mutableStateOf(true) }
+    var markerColorArgb by remember { mutableIntStateOf(0xFF00E5FF.toInt()) }
+    var markerSizeDp by remember { mutableFloatStateOf(3f) }
+    var markerOutline by remember { mutableStateOf(true) }
     var activeToolPopup by remember { mutableStateOf<String?>(null) }
 
     BoxWithConstraints(
@@ -156,6 +160,9 @@ fun ViewerScreen(
                         verificationSegments = state.trackingVerificationByFrame[state.playback.currentFrame].orEmpty(),
                         showVerificationOverlay = showVerificationOverlay,
                         showTrackPointsOverlay = showTrackPointsOverlay,
+                        markerColorArgb = markerColorArgb,
+                        markerSizeDp = markerSizeDp,
+                        markerOutline = markerOutline,
                         isLoading = state.isLoadingFrame,
                         errorMessage = state.errorMessage,
                         zoom = zoom,
@@ -247,6 +254,12 @@ fun ViewerScreen(
                 verificationLineCount = state.trackingVerificationByFrame[state.playback.currentFrame].orEmpty().size,
                 showCube = showVerificationOverlay,
                 showTracks = showTrackPointsOverlay,
+                markerColorArgb = markerColorArgb,
+                markerSizeDp = markerSizeDp,
+                markerOutline = markerOutline,
+                onMarkerColorChanged = { markerColorArgb = it },
+                onMarkerSizeChanged = { markerSizeDp = it },
+                onMarkerOutlineChanged = { markerOutline = it },
                 onCubeChanged = { showVerificationOverlay = it },
                 onTracksChanged = { showTrackPointsOverlay = it },
                 onDismiss = { activeToolPopup = null }
@@ -262,6 +275,9 @@ private fun ViewerPanel(
     verificationSegments: List<TrackingVerificationSegment>,
     showVerificationOverlay: Boolean,
     showTrackPointsOverlay: Boolean,
+    markerColorArgb: Int,
+    markerSizeDp: Float,
+    markerOutline: Boolean,
     isLoading: Boolean,
     errorMessage: String?,
     zoom: Float,
@@ -289,6 +305,9 @@ private fun ViewerPanel(
         ViewerCanvas(
             bitmap = bitmap,
             trackingPoints = if (showTrackPointsOverlay) trackingPoints else emptyList(),
+            trackingPointColor = Color(markerColorArgb.toLong() and 0xFFFFFFFFL),
+            trackingPointSizeDp = markerSizeDp,
+            trackingPointOutline = markerOutline,
             trackingVerificationSegments = if (showVerificationOverlay) verificationSegments else emptyList(),
             isLoading = isLoading,
             requestedZoom = zoom,

@@ -484,8 +484,9 @@ internal class IncrementalSfMSolver(
                                     "PnP registered backwards (${registration.inlierCount} inliers)"
                                 )
                                 if (acceptedRegistrationsSinceMapUpdate >= 2) {
+                                    val newTracks = tracks.filter { it.id !in landmarksByTrack }
                                     val update = SfMTriangulator.triangulate(
-                                        tracks, poseByFrame.filterNotNull(), cameraMatrix
+                                        newTracks, poseByFrame.filterNotNull(), cameraMatrix
                                     )
                                     update.landmarks.forEach { landmark ->
                                         val old = landmarksByTrack[landmark.trackId]

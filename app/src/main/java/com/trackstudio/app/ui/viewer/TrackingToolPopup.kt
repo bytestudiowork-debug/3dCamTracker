@@ -1,6 +1,7 @@
 package com.trackstudio.app.ui.viewer
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -14,11 +15,13 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,6 +54,12 @@ internal fun TrackingToolPopup(
     verificationLineCount: Int,
     showCube: Boolean,
     showTracks: Boolean,
+    markerColorArgb: Int,
+    markerSizeDp: Float,
+    markerOutline: Boolean,
+    onMarkerColorChanged: (Int) -> Unit,
+    onMarkerSizeChanged: (Float) -> Unit,
+    onMarkerOutlineChanged: (Boolean) -> Unit,
     onCubeChanged: (Boolean) -> Unit,
     onTracksChanged: (Boolean) -> Unit,
     onDismiss: () -> Unit
@@ -99,6 +108,14 @@ internal fun TrackingToolPopup(
                     )
                 } else {
                     PopupSwitch("Show feature tracks", showTracks, onTracksChanged)
+                    Text("Marker colour", color = TextPrimary, fontSize = 13.sp)
+                    MarkerColourSelector(markerColorArgb, onMarkerColorChanged)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Marker size", color = TextPrimary, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Text("${String.format("%.1f", markerSizeDp)} dp", color = AccentPrimary, fontSize = 12.sp)
+                    }
+                    Slider(value = markerSizeDp.coerceIn(2f, 5.5f), onValueChange = onMarkerSizeChanged, valueRange = 2f..5.5f)
+                    PopupSwitch("Dark outline", markerOutline, onMarkerOutlineChanged)
                     PopupMetric("Frame", "$currentFrame / $frameCount")
                     PopupMetric("Tracked observations on frame", trackPointCount.toString())
                     Text(
@@ -107,6 +124,20 @@ internal fun TrackingToolPopup(
                     )
                 }
             }
+        }
+    }
+}
+
+
+@Composable
+private fun MarkerColourSelector(selectedArgb: Int, onSelected: (Int) -> Unit) {
+    val colours = listOf(0xFF00E5FF.toInt(), 0xFFFFD740.toInt(), 0xFF76FF03.toInt(), 0xFFFF4081.toInt(), 0xFFB388FF.toInt(), 0xFFFFFFFF.toInt())
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        colours.forEach { argb ->
+            val selected = argb == selectedArgb
+            Box(Modifier.size(27.dp).clip(CircleShape).background(Color(argb.toLong() and 0xFFFFFFFFL))
+                .border(if (selected) 2.dp else 1.dp, if (selected) TextPrimary else TextSecondary.copy(alpha = 0.45f), CircleShape)
+                .clickable { onSelected(argb) })
         }
     }
 }
