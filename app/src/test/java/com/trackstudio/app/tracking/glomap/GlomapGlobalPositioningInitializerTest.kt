@@ -86,7 +86,10 @@ class GlomapGlobalPositioningInitializerTest {
                 frame(1, center = doubleArrayOf(3.0, 4.0, 5.0), translation = doubleArrayOf(8.0, 8.0, 8.0)),
                 frame(2, center = doubleArrayOf(6.0, 7.0, 8.0), translation = doubleArrayOf(9.0, 9.0, 9.0))
             ),
-            images = listOf(GlomapGlobalPositioningInitializer.ImageInput(11, 1, true)),
+            images = listOf(
+                GlomapGlobalPositioningInitializer.ImageInput(11, 1, true),
+                GlomapGlobalPositioningInitializer.ImageInput(22, 2, true)
+            ),
             imagePairs = listOf(
                 GlomapGlobalPositioningInitializer.ImagePairInput(11, 22, true)
             ),
