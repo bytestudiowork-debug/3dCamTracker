@@ -27,6 +27,7 @@ class GlomapGlobalPositioningProblemBuilderTest {
         )
         assertEquals(1.0, problem.constraints.first().initialScale, 0.0)
         assertEquals(1e-5, problem.constraints.first().scaleLowerBound, 0.0)
+        assertEquals(0.5, problem.constraints[1].lossScale, 0.0)
     }
 
     @Test
@@ -50,7 +51,8 @@ class GlomapGlobalPositioningProblemBuilderTest {
             listOf(observation(0), observation(1), observation(2, rotation = DoubleArray(9)))
         )
         val problem = GlomapGlobalPositioningProblemBuilder.build(listOf(short, invalid))
-        assertEquals(0, problem.constraints.size)
+        assertEquals(2, problem.constraints.size)
+        assertEquals(1, problem.acceptedTrackCount)
         assertEquals(1, problem.skippedShortTracks)
         assertEquals(1, problem.skippedInvalidObservations)
     }

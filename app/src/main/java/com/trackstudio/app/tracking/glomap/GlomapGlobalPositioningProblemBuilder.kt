@@ -47,9 +47,7 @@ internal object GlomapGlobalPositioningProblemBuilder {
         val translationObservation: DoubleArray,
         val initialScale: Double,
         val scaleLowerBound: Double = SCALE_LOWER_BOUND,
-        val huberDelta: Double,
-        /** GLOMAP scales uncalibrated point-to-camera losses by 0.5 in ONLY_POINTS mode. */
-        val lossScale: Double
+        val huberDelta: Double
     )
 
     data class Problem(
@@ -114,8 +112,7 @@ internal object GlomapGlobalPositioningProblemBuilder {
                     point = point?.copyOf(),
                     translationObservation = translation,
                     initialScale = scale,
-                    huberDelta = HUBER_DELTA,
-                    lossScale = if (observation.isCalibrated) 1.0 else 0.5,
+                    huberDelta = if (observation.isCalibrated) HUBER_DELTA else HUBER_DELTA,
                 )
                 trackAdded = true
             }
