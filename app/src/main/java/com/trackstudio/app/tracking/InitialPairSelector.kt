@@ -176,7 +176,11 @@ internal data class InitialPairCandidate(
     val cheiralityRatio: Double,
     val homographyInlierRatio: Double,
     /** Fraction of translation aligned with the viewing direction, in [0, 1]. */
-    val forwardMotionRatio: Double
+    val forwardMotionRatio: Double,
+    /** Relative rotation R_second_from_first recovered from this image pair, row-major. */
+    val relativeRotation: DoubleArray? = null,
+    /** Unit translation direction in the second camera coordinate system. */
+    val relativeTranslationDirection: DoubleArray? = null
 ) {
     val frameGap: Int
         get() = secondFrame - firstFrame

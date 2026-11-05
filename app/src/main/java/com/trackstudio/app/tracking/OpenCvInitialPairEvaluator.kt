@@ -198,6 +198,10 @@ internal object OpenCvInitialPairEvaluator {
                 val translationNorm = sqrt(t.sumOf { it * it }).coerceAtLeast(1e-12)
                 val forwardMotionRatio = (kotlin.math.abs(t[2]) / translationNorm).coerceIn(0.0, 1.0)
 
+                val relativeRotation = DoubleArray(9)
+                val relativeTranslationDirection = DoubleArray(3)
+                rotation.get(0, 0, relativeRotation)
+                translation.get(0, 0, relativeTranslationDirection)
                 val candidate = InitialPairCandidate(
                     firstFrame = firstFrame,
                     secondFrame = secondFrame,
@@ -208,7 +212,9 @@ internal object OpenCvInitialPairEvaluator {
                     upperQuartileParallaxDegrees = upperQuartileParallax,
                     cheiralityRatio = inlierCount.toDouble() / essentialInlierCount.coerceAtLeast(1),
                     homographyInlierRatio = homographyRatio,
-                    forwardMotionRatio = forwardMotionRatio
+                    forwardMotionRatio = forwardMotionRatio,
+                    relativeRotation = relativeRotation,
+                    relativeTranslationDirection = relativeTranslationDirection
                 )
                 return InitialPairSelector.evaluate(candidate, policy)
             } finally {

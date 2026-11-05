@@ -76,6 +76,26 @@ class InitialPairSelectorTest {
     }
 
     @Test
+    fun selectedCandidatePreservesRecoveredRelativePoseForViewGraph() {
+        val rotation = doubleArrayOf(
+            1.0, 0.0, 0.0,
+            0.0, 0.0, -1.0,
+            0.0, 1.0, 0.0
+        )
+        val direction = doubleArrayOf(1.0, 0.0, 0.0)
+        val measured = candidate().copy(
+            relativeRotation = rotation,
+            relativeTranslationDirection = direction
+        )
+
+        val result = InitialPairSelector.select(listOf(measured))
+
+        assertNotNull(result.selected)
+        assertTrue(result.selected!!.relativeRotation!!.contentEquals(rotation))
+        assertTrue(result.selected!!.relativeTranslationDirection!!.contentEquals(direction))
+    }
+
+    @Test
     fun returnsNoSelectionWhenEveryPairFailsQualityGates() {
         val result = InitialPairSelector.select(
             listOf(candidate(inliers = 20), candidate(secondFrame = 9, inliers = 25))
