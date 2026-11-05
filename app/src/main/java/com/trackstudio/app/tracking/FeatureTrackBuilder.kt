@@ -215,7 +215,7 @@ internal class FeatureTrackBuilder {
         trackIds: Set<Int>? = null
     ): List<CameraFeatureTrack> {
         val source: Sequence<Pair<Int, MutableList<CameraFeatureObservation>>> =
-            if (trackIds == null) tracks.asSequence()
+            if (trackIds == null) tracks.asSequence().map { entry -> entry.key to entry.value }
             else trackIds.asSequence().mapNotNull { id ->
                 tracks[id]?.let { observations -> id to observations }
             }
