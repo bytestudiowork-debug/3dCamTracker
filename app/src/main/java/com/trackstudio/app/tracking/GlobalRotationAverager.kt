@@ -43,7 +43,7 @@ internal object GlobalRotationAverager {
         val validEdges = edges.filter {
             it.firstFrame in index && it.secondFrame in index &&
                 it.firstFrame != it.secondFrame && it.inlierCount > 0 &&
-                it.relativeRotation.size == 9 && it.relativeRotation.all(Double::isFinite)
+                isRotationMatrix(it.relativeRotation)
         }
         if (validEdges.isEmpty()) return null
 
@@ -121,6 +121,26 @@ internal object GlobalRotationAverager {
             rootFrame = root,
             iterations = iterations
         )
+    }
+
+    /**
+     * Relative poses are expected to contain proper SO(3) rotations. Reject
+     * malformed matrices before they enter logarithms or the graph solver.
+     * The tolerance accommodates floating-point output from OpenCV.
+     */
+    private fun isRotationMatrix(r: DoubleArray): Boolean {
+        if (r.size != 9 || r.any { !it.isFinite() }) return false
+        for (row in 0..2) for (col in 0..2) {
+            var value = 0.0
+            for (k in 0..2) value += r[k * 3 + row] * r[k * 3 + col]
+            val expected = if (row == col) 1.0 else 0.0
+            if (abs(value - expected) > 1e-3) return false
+        }
+        val determinant =
+            r[0] * (r[4] * r[8] - r[5] * r[7]) -
+            r[1] * (r[3] * r[8] - r[5] * r[6]) +
+            r[2] * (r[3] * r[7] - r[4] * r[6])
+        return determinant.isFinite() && abs(determinant - 1.0) <= 1e-3
     }
 
     private fun largestComponent(frames: List<Int>, edges: List<Edge>): Set<Int> {
@@ -307,36 +327,73 @@ internal object GlobalRotationAverager {
         return result
     }
 
-    private fun conjugateGradient(diagonal: DoubleArray, links: List<Triple<Int, Int, Double>>, rhs: DoubleArray): DoubleArray? {
+    /**
+     * Jacobi-preconditioned conjugate gradients for the same anchored graph
+     * Laplacian normal equations used by COLMAP's LAD x-step / GLOMAP IRLS.
+     * Preconditioning changes only the numerical route to the linear-system
+     * solution; it does not change the objective or graph constraints.
+     */
+    private fun conjugateGradient(
+        diagonal: DoubleArray,
+        links: List<Triple<Int, Int, Double>>,
+        rhs: DoubleArray
+    ): DoubleArray? {
+        if (rhs.isEmpty()) return DoubleArray(0)
+        if (diagonal.size != rhs.size ||
+            diagonal.any { !it.isFinite() || it <= 0.0 } ||
+            rhs.any { !it.isFinite() }
+        ) return null
+
         fun multiplyVector(x: DoubleArray): DoubleArray {
             val y = DoubleArray(x.size) { diagonal[it] * x[it] }
-            for ((a, b, w) in links) {
-                y[a] -= w * x[b]
-                y[b] -= w * x[a]
+            for ((a, b, weight) in links) {
+                y[a] -= weight * x[b]
+                y[b] -= weight * x[a]
             }
             return y
         }
+
         val x = DoubleArray(rhs.size)
-        var r = rhs.copyOf()
-        var p = r.copyOf()
-        var rr = dot(r, r)
-        val target = max(1e-20, rr * 1e-12)
+        val residual = rhs.copyOf()
+        val preconditioned = DoubleArray(rhs.size) { residual[it] / diagonal[it] }
+        val direction = preconditioned.copyOf()
+        var residualDotPreconditioned = dot(residual, preconditioned)
+        val initialResidualSquared = dot(residual, residual)
+        val target = max(1e-20, initialResidualSquared * 1e-12)
+        if (initialResidualSquared <= target) return x
+
         repeat(min(500, max(30, rhs.size * 3))) {
-            if (rr <= target) return x
-            val ap = multiplyVector(p)
-            val denom = dot(p, ap)
-            if (!denom.isFinite() || denom <= 1e-20) return if (rr < 1e-12) x else null
-            val alpha = rr / denom
-            for (i in x.indices) {
-                x[i] += alpha * p[i]
-                r[i] -= alpha * ap[i]
+            val product = multiplyVector(direction)
+            val denominator = dot(direction, product)
+            if (!denominator.isFinite() || denominator <= 1e-30) {
+                return if (dot(residual, residual) < 1e-12) x else null
             }
-            val next = dot(r, r)
-            val beta = next / rr
-            for (i in p.indices) p[i] = r[i] + beta * p[i]
-            rr = next
+
+            val alpha = residualDotPreconditioned / denominator
+            if (!alpha.isFinite()) return null
+            for (i in x.indices) {
+                x[i] += alpha * direction[i]
+                residual[i] -= alpha * product[i]
+            }
+
+            val residualSquared = dot(residual, residual)
+            if (!residualSquared.isFinite()) return null
+            if (residualSquared <= target) return x
+
+            for (i in preconditioned.indices) {
+                preconditioned[i] = residual[i] / diagonal[i]
+            }
+            val nextResidualDotPreconditioned = dot(residual, preconditioned)
+            if (!nextResidualDotPreconditioned.isFinite() ||
+                residualDotPreconditioned <= 0.0
+            ) return null
+            val beta = nextResidualDotPreconditioned / residualDotPreconditioned
+            for (i in direction.indices) {
+                direction[i] = preconditioned[i] + beta * direction[i]
+            }
+            residualDotPreconditioned = nextResidualDotPreconditioned
         }
-        return if (rr.isFinite()) x else null
+        return if (dot(residual, residual).isFinite()) x else null
     }
 
     private fun identity() = doubleArrayOf(1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0)

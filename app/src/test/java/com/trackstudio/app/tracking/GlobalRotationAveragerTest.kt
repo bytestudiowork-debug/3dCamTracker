@@ -31,6 +31,35 @@ class GlobalRotationAveragerTest {
         assertEquals(setOf(0,1,2), solved.rotationsByFrame.keys)
     }
 
+    @Test fun rejectsMalformedRelativeRotationMatrices() {
+        val invalid = GlobalRotationAverager.Edge(
+            0, 1,
+            doubleArrayOf(2.0,0.0,0.0, 0.0,2.0,0.0, 0.0,0.0,2.0),
+            100
+        )
+        assertNull(GlobalRotationAverager.solve(listOf(0, 1), listOf(invalid)))
+    }
+
+    @Test fun solvesLargerSparseViewGraphWithPreconditionedLinearSolver() {
+        val frameIds = (0 until 40).toList()
+        val expected = frameIds.associateWith { frame ->
+            rot(0.0015 * frame, 0.006 * frame, -0.002 * frame)
+        }
+        val edges = mutableListOf<GlobalRotationAverager.Edge>()
+        for (frame in 0 until 39) edges += edge(frame, frame + 1, expected)
+        for (frame in 0 until 36 step 3) edges += edge(frame, frame + 4, expected)
+
+        val solved = GlobalRotationAverager.solve(frameIds, edges)!!
+        assertEquals(40, solved.rotationsByFrame.size)
+        frameIds.forEach { frame ->
+            val error = relativeAngle(
+                solved.rotationsByFrame.getValue(frame),
+                expected.getValue(frame)
+            )
+            assertTrue("frame=$frame error=$error", error < 0.02)
+        }
+    }
+
     private fun edge(a:Int,b:Int,truth:Map<Int,DoubleArray>) =
         GlobalRotationAverager.Edge(a,b,multiply(truth.getValue(b),transpose(truth.getValue(a))),100)
 
