@@ -57,6 +57,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
       - name: Install Android NDK and Eigen
         run: |
           sdkmanager "ndk;27.0.12077973"
