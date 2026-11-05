@@ -148,3 +148,41 @@ Reject or warn on pure rotation, insufficient parallax, severe blur, low texture
 - Ceres solver guidance for Schur-based bundle adjustment: https://ceres-solver.readthedocs.io/latest/solving_faqs.html
 - Ceres Android build requirements and SuiteSparse licensing note: https://ceres-solver.readthedocs.io/latest/installation.html
 - Blender camera solver and conversion to F-curves: https://docs.blender.org/manual/en/latest/animation/constraints/motion_tracking/camera_solver.html
+
+
+## Comparative review: production matchmove systems and mobile adaptation
+
+The reviewed workflows converge on a staged pipeline rather than one monolithic solver:
+
+- **After Effects** separates background analysis from solving, exposes solve-type hints (typical, mostly-flat, tripod-pan), lets users inspect/delete bad tracks, and reports reprojection error. TrackStudio should preserve this separation and surface uncertainty instead of hiding it.
+- **Nuke / Foundry CameraTracker** supports automatic and user-seeded tracks, moving-object masks, multiple camera models, survey constraints, lens distortion, and exports a camera plus point cloud. The mobile equivalent should prioritize robust automatic tracks first, then add masks/manual seeds and calibrated intrinsics as explicit inputs.
+- **Blender / libmv** treats 2D tracks, camera intrinsics/distortion, camera solving, and scene orientation as distinct operations. Its solve requires common tracks and parallax; the solve error is measured by reprojecting reconstructed points. libmv is a matchmove-focused library, not a drop-in dense reconstruction engine.
+- **3DEqualizer and SynthEyes** are professional matchmove references for track supervision, lens calibration/distortion, survey constraints, and solve refinement. Their internal proprietary implementations are not assumed or copied; only publicly documented workflows are used as design guidance.
+- **COLMAP / OpenMVG** provide the open incremental-SfM reference: sequential matching for video, view registration against a shared map, multi-view triangulation, local/global bundle adjustment, and loop/revisit handling.
+- **AMD / OpenCV / Arm performance guidance** favors portable optimized primitives and SIMD dispatch (including NEON on ARM), profiling before hand-written architecture-specific kernels, and keeping working sets bounded. AMD's 2026 OpenCV work is upstream portable SIMD, not a reason to add AMD-only code to Android.
+
+### Implemented in this iteration
+
+PnP registration now snapshots only feature tracks already associated with current 3D landmarks. Previously, every frame copied the complete feature-track graph (including short-lived tracks that cannot contribute to PnP), and the registrar rebuilt an ID lookup over that larger list. The new filtered snapshot copies only map-connected tracks for each registration/recovery attempt. The complete track graph is materialized only when a map update, final triangulation, refinement, or result assembly needs it. This is an allocation/CPU reduction that does not lower RANSAC quality gates or discard map landmarks.
+
+### Next engine milestones (ordered by correctness and mobile cost)
+
+1. Add synthetic camera/landmark tests for pose direction, cheirality, reverse registration, and exact per-frame timeline invariants.
+2. Add pyramidal Lucas-Kanade flow between ORB refresh/keyframes; periodically re-detect/replenish features and reject flow by forward-backward error, patch error, and image coverage. Benchmark on low-end ARM before enabling by default.
+3. Replace the current all-map triangulation passes with bounded multi-view track triangulation and stable track-to-landmark maintenance.
+4. Implement true sliding-window joint camera/point bundle adjustment with robust loss and a fixed gauge; evaluate Ceres/Schur on Android only after APK size, ABI, memory, and latency measurements.
+5. Add adaptive keyframe selection, moving-object masks, user-seeded tracks, lens distortion/calibration, and camera-model hints (typical / mostly planar / tripod-pan).
+6. Add revisit/loop detection and pose-graph refinement; keep dense per-source-frame pose output and explicit inferred/unregistered statuses.
+7. Profile decode, feature extraction, matching, PnP, triangulation, and BA independently on representative ARM devices. Use adaptive feature/resolution budgets and portable OpenCV NEON paths; do not assume workstation SIMD/GPU optimizations exist on phones.
+
+### Sources reviewed
+
+- Adobe After Effects 3D Camera Tracker: https://helpx.adobe.com/after-effects/desktop/work-with-3d-composition/3d-camera-tracker-effect/tracking-3d-camera-movement.html
+- Foundry Nuke CameraTracker workflow: https://modosdk.foundry.com/nuke/12.0/content/comp_environment/cameratracker/camera_tracking.html
+- Blender camera solver: https://docs.blender.org/manual/en/latest/animation/constraints/motion_tracking/camera_solver.html
+- Blender/libmv overview via OpenCV SFM docs: https://docs.opencv.org/3.4.20/d8/d8c/group__sfm.html
+- COLMAP incremental mapping and sequential matching: https://github.com/colmap/colmap/blob/main/src/colmap/sfm/incremental_mapper.h and https://colmap.github.io/faq.html
+- OpenCV pyramidal Lucas-Kanade reference: https://docs.opencv.org/2.3/modules/video/doc/motion_analysis_and_object_tracking.html
+- AMD portable SIMD work in OpenCV: https://www.amd.com/en/developer/resources/technical-articles/2026/accelerating-opencv-with-portable-simd.html
+- OpenCV hardware acceleration layer: https://docs.opencv.org/5.0/main_modules/hal.html
+- Arm NEON overview: https://www.arm.com/technologies/neon

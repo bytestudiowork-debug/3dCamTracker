@@ -205,11 +205,22 @@ internal class FeatureTrackBuilder {
         previousAssignments = mutableMapOf()
     }
 
-    fun build(minimumObservations: Int = 2): List<CameraFeatureTrack> =
-        tracks.mapNotNull { (id, observations) ->
+    /**
+     * Creates an immutable snapshot. When [trackIds] is supplied, only those
+     * tracks are copied. PnP registration uses this map-sized view rather than
+     * allocating snapshots for every short-lived feature in the clip.
+     */
+    fun build(
+        minimumObservations: Int = 2,
+        trackIds: Set<Int>? = null
+    ): List<CameraFeatureTrack> {
+        val source = if (trackIds == null) tracks else
+            trackIds.asSequence().mapNotNull { id -> tracks[id]?.let { id to it } }
+        return source.mapNotNull { (id, observations) ->
             if (observations.size < minimumObservations) null
             else CameraFeatureTrack(id, observations.toList())
-        }
+        }.toList()
+    }
 }
 
 data class CameraFeatureObservation(
