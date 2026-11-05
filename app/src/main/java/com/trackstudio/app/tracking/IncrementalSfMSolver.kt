@@ -205,7 +205,7 @@ internal class IncrementalSfMSolver(
             poseByFrame[selected.firstFrame] = referencePose
             poseByFrame[selected.secondFrame] = secondPose
 
-            var             var tracks = trackBuilder.build()
+            var tracks = trackBuilder.build()
             val initialReconstruction = SfMTriangulator.triangulate(
                 tracks, listOf(referencePose, secondPose), cameraMatrix
             )
@@ -607,7 +607,7 @@ internal class IncrementalSfMSolver(
                 currentCoroutineContext().ensureActive()
                 val adjustedLandmarks = MobileBundleAdjuster.optimizeLandmarks(
                     featureTracks = trackBuilder.build(trackIds = landmarksByTrack.keys),
-                    landmarks = landmarksByTrack.values,
+                    landmarks = landmarksByTrack.values.toList(),
                     poses = poseByFrame.filterNotNull(),
                     cameraMatrix = cameraMatrix
                 )
@@ -721,7 +721,7 @@ internal class IncrementalSfMSolver(
                 inlierRatio = (totalInliers.toDouble() / allCorrespondences).coerceIn(0.0, 1.0),
                 isCameraMotionEstimated = registeredFrames >= 2,
                 featureTracks = trackBuilder.build(trackIds = landmarksByTrack.keys),
-                landmarks = landmarksByTrack.values,
+                landmarks = landmarksByTrack.values.toList(),
                 triangulationStats = finalStats,
                 initialPairFrames = selected.firstFrame to selected.secondFrame,
                 registeredCameraCount = registeredFrames
