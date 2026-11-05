@@ -124,26 +124,26 @@ internal object GlobalRotationAverager {
      * For each pair, find an alternate path that excludes all parallel edges
      * for that pair. Tree edges have no independent evidence and are retained.
      */
+    /**
+     * Uses independent graph cycles as a robust pre-initialization check.
+     * The adjacency structure is built once and reused for every candidate,
+     * avoiding per-edge graph allocations on mobile.
+     */
     private fun rejectCycleInconsistentEdges(
         frames: List<Int>,
         edges: List<Edge>,
         thresholdDegrees: Double
     ): List<Edge> {
         data class Step(val edge: Edge, val from: Int, val to: Int)
+        val adjacency = frames.associateWith { mutableListOf<Step>() }
+        for (edge in edges) {
+            adjacency[edge.firstFrame]?.add(Step(edge, edge.firstFrame, edge.secondFrame))
+            adjacency[edge.secondFrame]?.add(Step(edge, edge.secondFrame, edge.firstFrame))
+        }
+
         val threshold = Math.toRadians(thresholdDegrees.coerceAtLeast(0.1))
         val kept = ArrayList<Edge>(edges.size)
-
         for (candidate in edges) {
-            val adjacency = frames.associateWith { mutableListOf<Step>() }
-            for (edge in edges) {
-                val samePair =
-                    (edge.firstFrame == candidate.firstFrame && edge.secondFrame == candidate.secondFrame) ||
-                    (edge.firstFrame == candidate.secondFrame && edge.secondFrame == candidate.firstFrame)
-                if (samePair) continue
-                adjacency[edge.firstFrame]?.add(Step(edge, edge.firstFrame, edge.secondFrame))
-                adjacency[edge.secondFrame]?.add(Step(edge, edge.secondFrame, edge.firstFrame))
-            }
-
             val parent = HashMap<Int, Step>()
             val seen = hashSetOf(candidate.firstFrame)
             val queue = ArrayDeque<Int>()
@@ -151,7 +151,10 @@ internal object GlobalRotationAverager {
             while (queue.isNotEmpty() && candidate.secondFrame !in seen) {
                 val current = queue.removeFirst()
                 for (step in adjacency[current].orEmpty()) {
-                    if (seen.add(step.to)) {
+                    val samePair =
+                        (step.edge.firstFrame == candidate.firstFrame && step.edge.secondFrame == candidate.secondFrame) ||
+                        (step.edge.firstFrame == candidate.secondFrame && step.edge.secondFrame == candidate.firstFrame)
+                    if (!samePair && seen.add(step.to)) {
                         parent[step.to] = step
                         queue.add(step.to)
                     }
