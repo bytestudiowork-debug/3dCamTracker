@@ -26,13 +26,16 @@ then assess whether the later COLMAP source should replace or supplement it.
    supernodal and SPQR components are GPL/commercial. Do not enable this
    dependency for TrackStudio without a commercial licence.
 
-2. **Promising no-GPL sparse backend.** Ceres documents Eigen sparse
-   Cholesky as a sparse backend, and its 2.2 version history records that
-   visibility-based preconditioning works with Eigen and CXSparse. The
-   candidate adaptation is Ceres `EigenSparse` with GLOMAP's package
-   requirement changed to `EigenSparse`. This must be proven by a native
-   test of the exact `SPARSE_SCHUR` + `CLUSTER_TRIDIAGONAL` combination.
-   Do not alter the optimizer or quietly use a different preconditioner.
+2. **No-GPL sparse backend candidate.** Ceres supports Eigen sparse
+   Cholesky as a backend for `SPARSE_SCHUR`. The proposed build is Ceres
+   `EigenSparse` with GLOMAP's package requirement changed to
+   `EigenSparse`; remove SuiteSparse from the GLOMAP dependency manifest.
+   GLOMAP's track-based path sets `SPARSE_SCHUR` and also assigns
+   `CLUSTER_TRIDIAGONAL`, but Ceres defines that preconditioner for
+   `ITERATIVE_SCHUR` only. GLOMAP explicitly says not to use iterative
+   solvers. Preserve the field assignment for source parity, but test the
+   actual `SPARSE_SCHUR` + EigenSparse path; do not claim the cluster
+   preconditioner is being applied.
 
 3. **CMake version mismatch.** The app uses Android CMake 3.22.1. The pinned
    GLOMAP top-level file requires CMake 3.28. Ceres 2.3 requires CMake 3.22+.
@@ -64,7 +67,7 @@ Before adding native libraries to the production app:
   included;
 - build each dependency for both `arm64-v8a` and `armeabi-v7a` using the
   app's NDK/API/STL settings;
-- run the Ceres solver/preconditioner smoke test on both ABIs;
+- run the Ceres `SPARSE_SCHUR` + EigenSparse smoke test on both ABIs;
 - build the selected COLMAP core and GLOMAP sources;
 - compare a deterministic fixture against the pinned upstream implementation.
 
@@ -72,6 +75,7 @@ Before adding native libraries to the production app:
 
 - GLOMAP root `CMakeLists.txt`, `cmake/FindDependencies.cmake`,
   `thirdparty/CMakeLists.txt`, `glomap/CMakeLists.txt`, and `vcpkg.json`.
+- GLOMAP global-positioning and bundle-adjustment solver option setup.
 - COLMAP root `CMakeLists.txt` at both recorded COLMAP revisions.
 - COLMAP controller target graph at the later reference revision.
 - Ceres official installation, Android build, component and solver guidance.

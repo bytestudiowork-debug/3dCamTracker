@@ -8,10 +8,10 @@ Pinned algorithm source:
 ## Decision: preserve the upstream optimizer, remove the GPL-only dependency requirement
 
 The pinned `GlobalPositioner::Solve` creates a Ceres problem and calls
-`ceres::Solve`. Its default track-based path uses:
+`ceres::Solve`. Its track-based path sets:
 
 - `SPARSE_SCHUR` linear solver.
-- `CLUSTER_TRIDIAGONAL` preconditioner.
+- `CLUSTER_TRIDIAGONAL` preconditioner option.
 - Explicit Schur parameter ordering: per-observation scales in group 0,
   3D tracks in group 1, frame translations and estimated rig translations
   in group 2, and rig scales in group 3.
@@ -24,6 +24,15 @@ The pinned `GlobalPositioner::Solve` creates a Ceres problem and calls
 - Result conversion maps optimized camera centers back to pose translations
   using the upstream rotation and rig-scale equations.
 
+Important Ceres detail: `CLUSTER_TRIDIAGONAL` is a preconditioner for
+`ITERATIVE_SCHUR`, not for `SPARSE_SCHUR`. The pinned GLOMAP source
+explicitly comments "Do not use iterative solvers" immediately before
+selecting `SPARSE_SCHUR`, while still assigning the cluster preconditioner
+field. Therefore that field is not the active preconditioner in this path.
+Keep the upstream assignment for source parity, but do not mistake it for
+an executed optimization stage or require a cluster-preconditioner test.
+The required sparse backend is for `SPARSE_SCHUR` itself.
+
 The pinned GLOMAP CMake currently calls
 `find_package(Ceres REQUIRED COMPONENTS SuiteSparse)`, and its vcpkg
 manifest also requests SuiteSparse. That is not acceptable for the
@@ -31,23 +40,22 @@ proprietary TrackStudio distribution without a commercial SuiteSparse
 licence: Ceres documents that its required SuiteSparse CHOLMOD supernodal
 and SPQR components are GPL/commercial.
 
-Ceres 2.2+ supports visibility-based preconditioning with Eigen and CXSparse.
-Ceres 2.3 supports Eigen sparse Cholesky as a selectable sparse backend.
-Therefore the first no-GPL route to test is to patch only the dependency
-selection in the vendored GLOMAP build:
+Ceres supports Eigen sparse Cholesky and documents EigenSparse as a valid
+backend for `SPARSE_SCHUR`. The no-GPL route to test is to patch only the
+dependency selection in the vendored GLOMAP build:
 - build Ceres with `WITH_EIGENSPARSE=ON` and `WITH_SUITESPARSE=OFF`;
 - change the GLOMAP Ceres package requirement from `SuiteSparse` to
   `EigenSparse`;
 - remove SuiteSparse from the GLOMAP dependency manifest;
-- retain the upstream `SPARSE_SCHUR` + `CLUSTER_TRIDIAGONAL` options and
-  all optimizer math/settings unchanged.
+- retain the upstream `SPARSE_SCHUR` setting, all optimizer math, and all
+  other solver settings unchanged.
 
 This is a build-system/licensing adaptation, not an algorithm substitution.
-It is not considered validated until an Android-native smoke test runs the
-exact solver/preconditioner combination and checks the Ceres summary reports
-the requested solver and preconditioner as actually used. If it fails, stop
-and investigate a permissively licensed sparse backend; do not silently
-switch to `ITERATIVE_SCHUR` or another preconditioner.
+It is not considered validated until an Android-native smoke test solves a
+small Schur-structured problem using `SPARSE_SCHUR` with EigenSparse and
+confirms the Ceres summary reports `SPARSE_SCHUR` as the solver actually
+used. If it fails, stop and investigate a permissively licensed sparse
+backend; do not silently switch to `ITERATIVE_SCHUR` or another solver.
 
 ## Android and upstream build constraints
 
@@ -94,16 +102,16 @@ verified by an NDK build.
    Android ABIs. Keep GPL SuiteSparse components out of the dependency graph.
 3. Patch only GLOMAP's CMake dependency requirement to EigenSparse; preserve
    its algorithm source and options.
-4. Add a native smoke test using the exact `SPARSE_SCHUR` /
-   `CLUSTER_TRIDIAGONAL` configuration and assert the actual solver and
-   preconditioner used in the Ceres summary.
+4. Add a native smoke test using the exact `SPARSE_SCHUR` configuration
+   with EigenSparse and assert that the Ceres summary reports that solver
+   as actually used.
 5. Port upstream GLOMAP parameter-block storage/lifetime, residual
    registration, loss ownership, bounds, parameter groups, gauge fixing,
    solver settings, and result conversion.
 6. Compare a deterministic fixture against the pinned upstream GLOMAP
    implementation, including optimized translations, point values, solver
    usability, and residual summaries.
-7. Build the required COLMAP core and GLOMAP pipeline for both ABIs, then
+7. Build the required COLMAP core and GLOMAP sources for both ABIs, then
    expose them through the standalone `GlomapReconstructionEngine`.
    Keep the current engine available as a fallback until device validation.
 
