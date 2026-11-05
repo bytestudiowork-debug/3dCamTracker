@@ -19,7 +19,7 @@ class CameraTrackingEngine(
         frameCount: Int,
         cameraMatrix: Mat,
         frameProvider: suspend (Int) -> Mat?,
-        onProgress: suspend (CameraTrackingProgress) -> Unit = {}
+        onProgress: suspend (CameraTrackingProgress) -> Unit
     ): CameraTrackingResult = withContext(Dispatchers.Default) {
         IncrementalSfMSolver(maxFeatures, ratioThreshold).solve(
             frameCount = frameCount,
