@@ -2,7 +2,7 @@ name: Ceres Android EigenSparse Smoke
 
 on:
   push:
-    branches: ["native/ceres-eigensparse-smoke"]
+    branches: ["main", "native/ceres-eigensparse-smoke"]
     paths:
       - ".github/workflows/ceres-android-smoke.yml"
       - "native/ceres-smoke/**"
