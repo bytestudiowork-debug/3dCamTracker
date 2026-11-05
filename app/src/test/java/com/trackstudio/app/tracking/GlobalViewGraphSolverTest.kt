@@ -45,7 +45,10 @@ class GlobalViewGraphSolverTest {
             InitialPairEvaluation(missingPose, true, 1.0, "no relative pose"),
             InitialPairEvaluation(candidate(2, 3, rotation(0.0, 0.1, 0.0)), false, 0.0, "rejected")
         )
-        assertEquals(null, GlobalViewGraphSolver.solve(evaluations))
+        val result = GlobalViewGraphSolver.solve(evaluations)
+        assertNotNull(result)
+        assertEquals(1, result!!.inputEdgeCount)
+        assertEquals(1, result.acceptedEdgeCount)
     }
 
     private fun candidate(a: Int, b: Int, r: DoubleArray?) = InitialPairCandidate(
@@ -81,7 +84,7 @@ class GlobalViewGraphSolverTest {
     }
     private fun relative(a: DoubleArray,b: DoubleArray)=multiply(a,transpose(b))
     private fun rotationError(a: DoubleArray,b: DoubleArray): Double {
-        val d=relative(a,transpose(b))
+        val d=multiply(a,transpose(b))
         return acos(((d[0]+d[4]+d[8]-1.0)*0.5).coerceIn(-1.0,1.0))
     }
 }

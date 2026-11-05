@@ -30,8 +30,9 @@ internal object GlobalViewGraphSolver {
             .filter {
                 it.inlierCount >= policy.minimumInliers &&
                     it.inlierRatio >= policy.minimumInlierRatio &&
-                    it.relativeRotation?.size == 9 &&
-                    it.relativeRotation.all(Double::isFinite)
+                    it.relativeRotation?.let { rotation ->
+                        rotation.size == 9 && rotation.all { value -> value.isFinite() }
+                    } == true
             }
             .map {
                 GlobalRotationAverager.Edge(
