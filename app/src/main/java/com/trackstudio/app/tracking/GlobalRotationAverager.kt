@@ -47,11 +47,17 @@ internal object GlobalRotationAverager {
         }
         if (validEdges.isEmpty()) return null
 
-        val component = largestComponent(frames, validEdges)
+        // Reject edges that contradict an independent multi-edge path before
+        // choosing the maximum-inlier spanning tree. This prevents one bad,
+        // high-inlier pair from becoming the initialization backbone.
+        val cycleFilteredEdges = rejectCycleInconsistentEdges(
+            frames, validEdges, rotationOutlierDegrees
+        )
+        val component = largestComponent(frames, cycleFilteredEdges)
         if (component.size < 2) return null
         val activeFrames = frames.filter { it in component }
         val activeIndex = activeFrames.withIndex().associate { it.value to it.index }
-        val activeEdges = validEdges.filter {
+        val activeEdges = cycleFilteredEdges.filter {
             it.firstFrame in activeIndex && it.secondFrame in activeIndex
         }
         val root = activeFrames.first()
@@ -100,32 +106,10 @@ internal object GlobalRotationAverager {
             val r = relativeResidual(edge, rotations)
             Math.toDegrees(norm3(r)) <= rotationOutlierDegrees
         }
+        // Include cycle-inconsistent and disconnected edges in the rejected
+        // report. Keep the solved rotations untouched: pruning must never clear
+        // entries from the active component or change its fixed gauge/root.
         val rejected = validEdges.filter { it !in accepted }
-        if (accepted.size >= activeFrames.size - 1 && accepted.size < activeEdges.size) {
-            // Re-solve after robust residual pruning, as in GLOMAP's repeated
-            // rotation-estimation / relative-pose-filter stages.
-            val prunedComponent = largestComponent(activeFrames, accepted)
-            val prunedFrames = activeFrames.filter { it in prunedComponent }
-            if (prunedFrames.size >= 2) {
-                val prunedIndex = prunedFrames.withIndex().associate { it.value to it.index }
-                val prunedEdges = accepted.filter {
-                    it.firstFrame in prunedIndex && it.secondFrame in prunedIndex
-                }
-                val refined = initializeMst(prunedFrames, prunedEdges, prunedFrames.first())
-                if (refined != null) {
-                    rotations.clear()
-                    rotations.putAll(refined)
-                    // Local refinement uses the pruned graph and its own fixed root.
-                    val savedFrames = activeFrames
-                    // Re-run using the same graph arrays only when the component
-                    // is unchanged; otherwise the first robust solution is retained.
-                    if (prunedFrames == savedFrames) {
-                        refine(prunedEdges, initialL1 = true)
-                        refine(prunedEdges, initialL1 = false)
-                    }
-                }
-            }
-        }
         return Result(
             rotationsByFrame = rotations.mapValues { it.value.copyOf() },
             acceptedEdges = accepted,
@@ -133,6 +117,74 @@ internal object GlobalRotationAverager {
             rootFrame = root,
             iterations = iterations
         )
+    }
+
+    /**
+     * Uses independent graph cycles as a robust pre-initialization check.
+     * For each pair, find an alternate path that excludes all parallel edges
+     * for that pair. Tree edges have no independent evidence and are retained.
+     */
+    private fun rejectCycleInconsistentEdges(
+        frames: List<Int>,
+        edges: List<Edge>,
+        thresholdDegrees: Double
+    ): List<Edge> {
+        data class Step(val edge: Edge, val from: Int, val to: Int)
+        val threshold = Math.toRadians(thresholdDegrees.coerceAtLeast(0.1))
+        val kept = ArrayList<Edge>(edges.size)
+
+        for (candidate in edges) {
+            val adjacency = frames.associateWith { mutableListOf<Step>() }
+            for (edge in edges) {
+                val samePair =
+                    (edge.firstFrame == candidate.firstFrame && edge.secondFrame == candidate.secondFrame) ||
+                    (edge.firstFrame == candidate.secondFrame && edge.secondFrame == candidate.firstFrame)
+                if (samePair) continue
+                adjacency[edge.firstFrame]?.add(Step(edge, edge.firstFrame, edge.secondFrame))
+                adjacency[edge.secondFrame]?.add(Step(edge, edge.secondFrame, edge.firstFrame))
+            }
+
+            val parent = HashMap<Int, Step>()
+            val seen = hashSetOf(candidate.firstFrame)
+            val queue = ArrayDeque<Int>()
+            queue.add(candidate.firstFrame)
+            while (queue.isNotEmpty() && candidate.secondFrame !in seen) {
+                val current = queue.removeFirst()
+                for (step in adjacency[current].orEmpty()) {
+                    if (seen.add(step.to)) {
+                        parent[step.to] = step
+                        queue.add(step.to)
+                    }
+                }
+            }
+            if (candidate.secondFrame !in seen) {
+                kept += candidate
+                continue
+            }
+
+            val path = ArrayList<Step>()
+            var node = candidate.secondFrame
+            while (node != candidate.firstFrame) {
+                val step = parent[node] ?: break
+                path += step
+                node = step.from
+            }
+            path.reverse()
+            var pathRotation = identity()
+            for (step in path) {
+                val directed = if (step.from == step.edge.firstFrame) {
+                    step.edge.relativeRotation
+                } else {
+                    transpose(step.edge.relativeRotation)
+                }
+                pathRotation = multiply(directed, pathRotation)
+            }
+            val cycleError = norm3(
+                logRotation(multiply(transpose(candidate.relativeRotation), pathRotation))
+            )
+            if (cycleError <= threshold) kept += candidate
+        }
+        return kept
     }
 
     private fun largestComponent(frames: List<Int>, edges: List<Edge>): Set<Int> {
