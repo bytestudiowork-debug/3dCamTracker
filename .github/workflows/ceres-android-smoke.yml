@@ -1,0 +1,92 @@
+name: Ceres Android EigenSparse Smoke
+
+on:
+  push:
+    branches: ["native/ceres-eigensparse-smoke"]
+    paths:
+      - ".github/workflows/ceres-android-smoke.yml"
+      - "native/ceres-smoke/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-solver-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Eigen
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libeigen3-dev
+      - name: Fetch pinned Ceres 2.2.0
+        run: |
+          git clone --depth 1 --branch 2.2.0 https://ceres-solver.googlesource.com/ceres-solver "$RUNNER_TEMP/ceres"
+      - name: Build Ceres without SuiteSparse
+        run: |
+          cmake -S "$RUNNER_TEMP/ceres" -B "$RUNNER_TEMP/ceres-host" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/ceres-host-install" \
+            -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF \
+            -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF \
+            -DMINIGLOG=ON -DGFLAGS=OFF \
+            -DSUITESPARSE=OFF -DEIGENSPARSE=ON \
+            -DCUDA=OFF -DLAPACK=OFF
+          grep -E '^(SUITESPARSE|EIGENSPARSE):BOOL=' "$RUNNER_TEMP/ceres-host/CMakeCache.txt"
+          grep -q '^SUITESPARSE:BOOL=OFF$' "$RUNNER_TEMP/ceres-host/CMakeCache.txt"
+          grep -q '^EIGENSPARSE:BOOL=ON$' "$RUNNER_TEMP/ceres-host/CMakeCache.txt"
+          cmake --build "$RUNNER_TEMP/ceres-host" --parallel 2
+          cmake --install "$RUNNER_TEMP/ceres-host"
+      - name: Run real SPARSE_SCHUR solve
+        run: |
+          cmake -S native/ceres-smoke -B "$RUNNER_TEMP/ceres-smoke-host" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/ceres-host-install"
+          cmake --build "$RUNNER_TEMP/ceres-smoke-host" --parallel 2
+          LD_LIBRARY_PATH="$RUNNER_TEMP/ceres-host-install/lib:$LD_LIBRARY_PATH" "$RUNNER_TEMP/ceres-smoke-host/ceres_sparse_smoke"
+
+  android-abi-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: ["arm64-v8a", "armeabi-v7a"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v3
+      - name: Install Android NDK and Eigen
+        run: |
+          sdkmanager "ndk;27.0.12077973"
+          sudo apt-get update
+          sudo apt-get install -y libeigen3-dev
+      - name: Fetch pinned Ceres 2.2.0
+        run: |
+          git clone --depth 1 --branch 2.2.0 https://ceres-solver.googlesource.com/ceres-solver "$RUNNER_TEMP/ceres"
+      - name: Cross-build Ceres and smoke executable
+        env:
+          ABI: ${{ matrix.abi }}
+        run: |
+          cmake -S "$RUNNER_TEMP/ceres" -B "$RUNNER_TEMP/ceres-android" \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_SDK_ROOT/ndk/27.0.12077973/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI="$ABI" -DANDROID_PLATFORM=android-26 \
+            -DANDROID_STL=c++_shared -DEigen3_DIR=/usr/share/eigen3/cmake \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/ceres-install" \
+            -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF \
+            -DBUILD_EXAMPLES=OFF -DBUILD_BENCHMARKS=OFF \
+            -DMINIGLOG=ON -DGFLAGS=OFF \
+            -DSUITESPARSE=OFF -DEIGENSPARSE=ON -DCUDA=OFF -DLAPACK=OFF
+          grep -q '^SUITESPARSE:BOOL=OFF$' "$RUNNER_TEMP/ceres-android/CMakeCache.txt"
+          grep -q '^EIGENSPARSE:BOOL=ON$' "$RUNNER_TEMP/ceres-android/CMakeCache.txt"
+          cmake --build "$RUNNER_TEMP/ceres-android" --parallel 2
+          cmake --install "$RUNNER_TEMP/ceres-android"
+          cmake -S native/ceres-smoke -B "$RUNNER_TEMP/smoke-android" \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_SDK_ROOT/ndk/27.0.12077973/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI="$ABI" -DANDROID_PLATFORM=android-26 \
+            -DANDROID_STL=c++_shared -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/ceres-install" \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/smoke-android" --parallel 2
+          file "$RUNNER_TEMP/ceres-install/lib/libceres.so"
+          file "$RUNNER_TEMP/smoke-android/ceres_sparse_smoke"
