@@ -25,7 +25,7 @@ internal object IncrementalCameraRegistrar {
         frameWidth: Int,
         frameHeight: Int,
         featureTracks: List<CameraFeatureTrack>,
-        landmarks: List<CameraLandmark>,
+        landmarks: Collection<CameraLandmark>,
         cameraMatrix: Mat,
         minimumCorrespondences: Int = 30,
         minimumInlierRatio: Double = 0.25,
