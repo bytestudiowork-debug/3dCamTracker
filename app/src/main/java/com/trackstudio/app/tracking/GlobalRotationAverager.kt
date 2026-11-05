@@ -6,7 +6,7 @@ import kotlin.math.*
  * Android port of GLOMAP's global rotation averaging core.
  *
  * Follows the source pipeline: maximum-inlier spanning-tree initialization,
- * tangent-space relative-rotation residuals, L1-style reweighting, then
+ * tangent-space relative-rotation residuals, GLOMAP's L1-ADMM regression, then
  * Geman-McClure IRLS. The normal equations are applied as a sparse graph
  * Laplacian and solved with conjugate gradients; no dense N x N matrix is built.
  *
@@ -33,9 +33,9 @@ internal object GlobalRotationAverager {
         frameIndices: List<Int>,
         edges: List<Edge>,
         l1Iterations: Int = 5,
-        irlsIterations: Int = 40,
+        irlsIterations: Int = 100,
         sigmaDegrees: Double = 5.0,
-        rotationOutlierDegrees: Double = 15.0
+        rotationOutlierDegrees: Double = 10.0
     ): Result? {
         val frames = frameIndices.distinct().sorted()
         if (frames.size < 2) return null
@@ -66,7 +66,10 @@ internal object GlobalRotationAverager {
             var residuals = computeResiduals(activeFrames, activeIndex, edgesToUse, rotations)
             val rounds = if (initialL1) l1Iterations else irlsIterations
             var admmInnerIterations = 10
+            var lastStepNorm = 0.0
+            var currentStepNorm = 0.0
             repeat(rounds.coerceAtLeast(0)) {
+                lastStepNorm = currentStepNorm
                 val deltas = if (initialL1) {
                     solveL1Admm(activeFrames.size, activeIndex, edgesToUse, residuals, admmInnerIterations)
                         .also { admmInnerIterations = min(admmInnerIterations * 2, 100) }
@@ -78,6 +81,7 @@ internal object GlobalRotationAverager {
                     }
                     solveTangentUpdates(activeFrames.size, activeIndex, edgesToUse, residuals, weights)
                 } ?: return false
+                currentStepNorm = sqrt(deltas.sumOf { dot(it, it) })
                 var averageStep = 0.0
                 for (i in activeFrames.indices) {
                     if (activeFrames[i] == root) continue
@@ -90,7 +94,11 @@ internal object GlobalRotationAverager {
                 iterations++
                 averageStep /= (activeFrames.size - 1).coerceAtLeast(1)
                 residuals = computeResiduals(activeFrames, activeIndex, edgesToUse, rotations)
-                if (averageStep < 1e-5) return true
+                // Match GLOMAP's default L1 and IRLS step threshold (0.001)
+                // and its additional L1 step-norm stagnation check (EPS=1e-12).
+                if (averageStep < 1e-3 ||
+                    (initialL1 && abs(lastStepNorm - currentStepNorm) < 1e-12)
+                ) return true
             }
             return true
         }
