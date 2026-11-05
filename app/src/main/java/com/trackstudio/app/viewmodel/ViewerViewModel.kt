@@ -12,6 +12,7 @@ import com.trackstudio.app.playback.FrameSource
 import com.trackstudio.app.playback.PlaybackController
 import com.trackstudio.app.playback.PlaybackState
 import com.trackstudio.app.tracking.CameraTrackingEngine
+import com.trackstudio.app.tracking.ReconstructionEngine
 import com.trackstudio.app.tracking.CameraTrackingProgress
 import com.trackstudio.app.tracking.TrackingVerificationProjector
 import com.trackstudio.app.tracking.TrackingVerificationSegment
@@ -63,7 +64,8 @@ data class ViewerUiState(
 )
 
 class ViewerViewModel(
-    private val appContext: Context
+    private val appContext: Context,
+    private val reconstructionEngine: ReconstructionEngine = CameraTrackingEngine()
 ) : ViewModel() {
 
     companion object {
@@ -217,7 +219,7 @@ class ViewerViewModel(
                 val cameraMatrix = Mat.eye(3, 3, CvType.CV_64F)
                 intrinsics = cameraMatrix
                 cameraMatrix.put(0, 0, focal, 0.0, (width - 1) * 0.5, 0.0, focal, (height - 1) * 0.5, 0.0, 0.0, 1.0)
-                val result = CameraTrackingEngine().solve(
+                val result = reconstructionEngine.solve(
                     frameCount = uris.size,
                     cameraMatrix = cameraMatrix,
                     frameProvider = { index ->

@@ -10,7 +10,7 @@ import kotlin.math.sin
 
 class GlobalViewGraphSolverTest {
     @Test
-    fun runsThreePassGlobalRotationAveragingOnVerifiedViewGraph() {
+    fun runsTwoPassGlobalRotationAveragingOnVerifiedViewGraph() {
         val truth = (0..4).associateWith { rotation(0.0, it * 0.08, it * 0.01) }
         val pairs = listOf(0 to 1, 1 to 2, 2 to 3, 3 to 4, 0 to 2, 1 to 3, 2 to 4, 0 to 4)
         val evaluations = pairs.map { (a, b) ->

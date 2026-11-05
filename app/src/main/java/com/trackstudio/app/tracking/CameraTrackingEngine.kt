@@ -14,8 +14,8 @@ import org.opencv.core.Mat
 class CameraTrackingEngine(
     private val maxFeatures: Int = 1800,
     private val ratioThreshold: Float = 0.78f
-) {
-    suspend fun solve(
+) : ReconstructionEngine {
+    override suspend fun solve(
         frameCount: Int,
         cameraMatrix: Mat,
         frameProvider: suspend (Int) -> Mat?,
