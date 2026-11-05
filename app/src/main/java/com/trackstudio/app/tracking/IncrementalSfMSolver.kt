@@ -283,7 +283,7 @@ internal class IncrementalSfMSolver(
                             frameWidth = source.cols(),
                             frameHeight = source.rows(),
                             featureTracks = trackBuilder.build(trackIds = landmarksByTrack.keys),
-                            landmarks = landmarksByTrack.values,
+                            landmarks = landmarksByTrack.values.toList(),
                             cameraMatrix = cameraMatrix
                         )
                         // If adjacent-frame tracking lost the seed-map features, try
@@ -306,7 +306,7 @@ internal class IncrementalSfMSolver(
                                     frameWidth = source.cols(),
                                     frameHeight = source.rows(),
                                     featureTracks = trackBuilder.build(trackIds = landmarksByTrack.keys),
-                                    landmarks = landmarksByTrack.values,
+                                    landmarks = landmarksByTrack.values.toList(),
                                     cameraMatrix = cameraMatrix
                                 )
                                 if (recovered.accepted ||
@@ -334,7 +334,7 @@ internal class IncrementalSfMSolver(
                                     frameWidth = source.cols(),
                                     frameHeight = source.rows(),
                                     featureTracks = trackBuilder.build(trackIds = landmarksByTrack.keys),
-                                    landmarks = landmarksByTrack.values,
+                                    landmarks = landmarksByTrack.values.toList(),
                                     cameraMatrix = cameraMatrix
                                 )
                                 if (recoveredFromFirst.accepted ||
@@ -467,7 +467,7 @@ internal class IncrementalSfMSolver(
                                 frameWidth = source.cols(),
                                 frameHeight = source.rows(),
                                 featureTracks = trackBuilder.build(trackIds = landmarksByTrack.keys),
-                                landmarks = landmarksByTrack.values,
+                                landmarks = landmarksByTrack.values.toList(),
                                 cameraMatrix = cameraMatrix
                             )
                             // Backward recovery uses the same initialization keyframe,
@@ -489,7 +489,7 @@ internal class IncrementalSfMSolver(
                                         frameWidth = source.cols(),
                                         frameHeight = source.rows(),
                                         featureTracks = trackBuilder.build(trackIds = landmarksByTrack.keys),
-                                        landmarks = landmarksByTrack.values,
+                                        landmarks = landmarksByTrack.values.toList(),
                                         cameraMatrix = cameraMatrix
                                     )
                                     if (recovered.accepted ||
@@ -517,7 +517,7 @@ internal class IncrementalSfMSolver(
                                         frameWidth = source.cols(),
                                         frameHeight = source.rows(),
                                         featureTracks = trackBuilder.build(trackIds = landmarksByTrack.keys),
-                                        landmarks = landmarksByTrack.values,
+                                        landmarks = landmarksByTrack.values.toList(),
                                         cameraMatrix = cameraMatrix
                                     )
                                     if (recoveredFromFirst.accepted ||
@@ -624,7 +624,7 @@ internal class IncrementalSfMSolver(
                         frameWidth = firstFrame.width,
                         frameHeight = firstFrame.height,
                         featureTracks = trackBuilder.build(trackIds = landmarksByTrack.keys),
-                        landmarks = landmarksByTrack.values,
+                        landmarks = landmarksByTrack.values.toList(),
                         cameraMatrix = cameraMatrix
                     )
                     if (registration.accepted && registration.pose != null) {
@@ -657,7 +657,7 @@ internal class IncrementalSfMSolver(
 
                 val postPoseLandmarks = MobileBundleAdjuster.optimizeLandmarks(
                     featureTracks = trackBuilder.build(trackIds = landmarksByTrack.keys),
-                    landmarks = landmarksByTrack.values,
+                    landmarks = landmarksByTrack.values.toList(),
                     poses = poseByFrame.filterNotNull(),
                     cameraMatrix = cameraMatrix
                 )
