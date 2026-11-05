@@ -47,7 +47,7 @@ internal object GlomapGlobalPositioningInitializer {
     )
 
     data class Result(
-        val cameraCentersByFrame: Map<Int, DoubleArray>,
+        val frameTranslationsById: Map<Int, DoubleArray>,
         val pointsByTrack: Map<Int, DoubleArray?>,
         val initializedPointTrackIds: Set<Int>,
         val constrainedFrameIds: Set<Int>,
