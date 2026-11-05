@@ -52,7 +52,7 @@ class GlomapGlobalPositioningInitializerTest {
         )
         assertArrayEquals(
             doubleArrayOf(1.0, 2.0, 3.0),
-            result.frameTranslationsById.getValue(30),
+            result.cameraCentersByFrame.getValue(30),
             0.0
         )
         assertTrue(result.initializedPointTrackIds.contains(1))
@@ -89,8 +89,8 @@ class GlomapGlobalPositioningInitializerTest {
             tracks = emptyList(),
             options = GlomapGlobalPositioningInitializer.Options(generateRandomPositions = false)
         )
-        assertArrayEquals(doubleArrayOf(3.0, 4.0, 5.0), result.frameTranslationsById.getValue(1), 0.0)
-        assertArrayEquals(doubleArrayOf(9.0, 9.0, 9.0), result.frameTranslationsById.getValue(2), 0.0)
+        assertArrayEquals(doubleArrayOf(3.0, 4.0, 5.0), result.cameraCentersByFrame.getValue(1), 0.0)
+        assertArrayEquals(doubleArrayOf(9.0, 9.0, 9.0), result.cameraCentersByFrame.getValue(2), 0.0)
         assertEquals(0, result.randomEngineSamplesConsumed)
     }
 

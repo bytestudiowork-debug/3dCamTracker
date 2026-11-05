@@ -127,7 +127,7 @@ internal object GlomapGlobalPositioningInitializer {
         }
 
         return Result(
-            cameraCentersByFrame = cameraCenters,
+            frameTranslationsById = cameraCenters,
             pointsByTrack = points,
             initializedPointTrackIds = initialized,
             constrainedFrameIds = constrained,
