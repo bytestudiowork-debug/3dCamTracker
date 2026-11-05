@@ -214,8 +214,11 @@ internal class FeatureTrackBuilder {
         minimumObservations: Int = 2,
         trackIds: Set<Int>? = null
     ): List<CameraFeatureTrack> {
-        val source = if (trackIds == null) tracks else
-            trackIds.asSequence().mapNotNull { id -> tracks[id]?.let { id to it } }
+        val source: Sequence<Pair<Int, MutableList<CameraFeatureObservation>>> =
+            if (trackIds == null) tracks.asSequence()
+            else trackIds.asSequence().mapNotNull { id ->
+                tracks[id]?.let { observations -> id to observations }
+            }
         return source.mapNotNull { (id, observations) ->
             if (observations.size < minimumObservations) null
             else CameraFeatureTrack(id, observations.toList())

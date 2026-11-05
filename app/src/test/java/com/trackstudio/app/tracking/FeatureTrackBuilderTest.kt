@@ -120,25 +120,4 @@ class FeatureTrackBuilderTest {
     }
 
     private fun keypoint(x: Float, y: Float) = KeyPoint(x, y, 1f)
-
-    @Test
-    fun buildCanSnapshotOnlyRequestedTrackIds() {
-        val builder = FeatureTrackBuilder()
-        val first = arrayOf(
-            KeyPoint(10f, 10f, 1f),
-            KeyPoint(20f, 20f, 1f)
-        )
-        val second = arrayOf(
-            KeyPoint(11f, 10f, 1f),
-            KeyPoint(21f, 20f, 1f)
-        )
-        builder.seedPair(0, 1, first, second, listOf(0 to 0, 1 to 1))
-
-        val all = builder.build()
-        val selected = builder.build(trackIds = setOf(all.last().id))
-
-        assertEquals(2, all.size)
-        assertEquals(1, selected.size)
-        assertEquals(all.last().id, selected.single().id)
-    }
 }

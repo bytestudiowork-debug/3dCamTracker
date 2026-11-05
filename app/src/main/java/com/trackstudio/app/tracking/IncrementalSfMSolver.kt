@@ -277,13 +277,13 @@ internal class IncrementalSfMSolver(
                                 frameIndex, previousKeypoints, currentKeypoints, matches
                             )
                         }
-                        var registrationTracks = trackBuilder.build(trackIds = landmarksByTrack.keys)
+                        tracks = trackBuilder.build()
 
                         var registration = IncrementalCameraRegistrar.register(
                             frameIndex = frameIndex,
                             frameWidth = source.cols(),
                             frameHeight = source.rows(),
-                            featureTracks = registrationTracks,
+                            featureTracks = tracks,
                             landmarks = landmarksByTrack.values.toList(),
                             cameraMatrix = cameraMatrix
                         )
@@ -302,12 +302,12 @@ internal class IncrementalSfMSolver(
                                     selected.secondFrame, frameIndex,
                                     secondFrame.keypoints, currentKeypoints, anchorMatches
                                 )
-                                registrationTracks = trackBuilder.build(trackIds = landmarksByTrack.keys)
+                                tracks = trackBuilder.build()
                                 val recovered = IncrementalCameraRegistrar.register(
                                     frameIndex = frameIndex,
                                     frameWidth = source.cols(),
                                     frameHeight = source.rows(),
-                                    featureTracks = registrationTracks,
+                                    featureTracks = tracks,
                                     landmarks = landmarksByTrack.values.toList(),
                                     cameraMatrix = cameraMatrix
                                 )
@@ -331,12 +331,12 @@ internal class IncrementalSfMSolver(
                                     selected.firstFrame, frameIndex,
                                     firstFrame.keypoints, currentKeypoints, firstAnchorMatches
                                 )
-                                registrationTracks = trackBuilder.build(trackIds = landmarksByTrack.keys)
+                                tracks = trackBuilder.build()
                                 val recoveredFromFirst = IncrementalCameraRegistrar.register(
                                     frameIndex = frameIndex,
                                     frameWidth = source.cols(),
                                     frameHeight = source.rows(),
-                                    featureTracks = registrationTracks,
+                                    featureTracks = tracks,
                                     landmarks = landmarksByTrack.values.toList(),
                                     cameraMatrix = cameraMatrix
                                 )
@@ -361,7 +361,6 @@ internal class IncrementalSfMSolver(
                             // Triangulate periodically, not after every frame. This bounds
                             // CPU cost while allowing the map to grow during the solve.
                             if (acceptedRegistrationsSinceMapUpdate >= 2) {
-                                tracks = trackBuilder.build()
                                 val validPoses = poseByFrame.filterNotNull()
                                 // Only triangulate tracks not already in the sparse map;
                                 // repeated full-map passes waste CPU on longer clips.
@@ -458,7 +457,7 @@ internal class IncrementalSfMSolver(
                                 frameIndex, reverseKeypoints, currentKeypoints, matches
                             )
                         }
-                        var registrationTracks = trackBuilder.build(trackIds = landmarksByTrack.keys)
+                        tracks = trackBuilder.build()
 
                         if (frameIndex == selected.firstFrame) {
                             diagnostics[frameIndex] = FrameTrackingDiagnostic(
@@ -470,7 +469,7 @@ internal class IncrementalSfMSolver(
                                 frameIndex = frameIndex,
                                 frameWidth = source.cols(),
                                 frameHeight = source.rows(),
-                                featureTracks = registrationTracks,
+                                featureTracks = tracks,
                                 landmarks = landmarksByTrack.values.toList(),
                                 cameraMatrix = cameraMatrix
                             )
@@ -488,12 +487,12 @@ internal class IncrementalSfMSolver(
                                         selected.secondFrame, frameIndex,
                                         secondFrame.keypoints, currentKeypoints, anchorMatches
                                     )
-                                    registrationTracks = trackBuilder.build(trackIds = landmarksByTrack.keys)
+                                    tracks = trackBuilder.build()
                                     val recovered = IncrementalCameraRegistrar.register(
                                         frameIndex = frameIndex,
                                         frameWidth = source.cols(),
                                         frameHeight = source.rows(),
-                                        featureTracks = registrationTracks,
+                                        featureTracks = tracks,
                                         landmarks = landmarksByTrack.values.toList(),
                                         cameraMatrix = cameraMatrix
                                     )
@@ -517,12 +516,12 @@ internal class IncrementalSfMSolver(
                                         selected.firstFrame, frameIndex,
                                         firstFrame.keypoints, currentKeypoints, firstAnchorMatches
                                     )
-                                    registrationTracks = trackBuilder.build(trackIds = landmarksByTrack.keys)
+                                    tracks = trackBuilder.build()
                                     val recoveredFromFirst = IncrementalCameraRegistrar.register(
                                         frameIndex = frameIndex,
                                         frameWidth = source.cols(),
                                         frameHeight = source.rows(),
-                                        featureTracks = registrationTracks,
+                                        featureTracks = tracks,
                                         landmarks = landmarksByTrack.values.toList(),
                                         cameraMatrix = cameraMatrix
                                     )
@@ -543,7 +542,6 @@ internal class IncrementalSfMSolver(
                                     "PnP registered backwards (${registration.inlierCount} inliers)"
                                 )
                                 if (acceptedRegistrationsSinceMapUpdate >= 2) {
-                                    tracks = trackBuilder.build()
                                     val newTracks = tracks.filter { it.id !in landmarksByTrack }
                                     val update = SfMTriangulator.triangulate(
                                         newTracks, poseByFrame.filterNotNull(), cameraMatrix
@@ -590,10 +588,6 @@ internal class IncrementalSfMSolver(
             } finally {
                 reverseDescriptors.release()
             }
-
-            // Materialize the complete graph once after both passes; per-frame PnP
-            // snapshots above contain only tracks already connected to the 3D map.
-            tracks = trackBuilder.build()
 
             // Flush newly observed tracks once more after the final registered pose.
             SfMTriangulator.triangulate(
