@@ -44,10 +44,13 @@ internal object TrackingVerificationProjector {
         }
         if (stable.size < 8) return emptyMap()
 
+        // Global reconstruction has no PnP seed camera: its solved poses are
+        // RELATIVE_ESTIMATE. Use an explicit reference/PnP pose when available,
+        // otherwise anchor the diagnostic object to the earliest solved camera.
         val reference = poses.firstOrNull {
             it.status == CameraPoseStatus.REFERENCE ||
                 it.status == CameraPoseStatus.PNP_REGISTERED
-        } ?: return emptyMap()
+        } ?: poses.minByOrNull { it.frameIndex } ?: return emptyMap()
 
         fun project(point: Point3, pose: CameraPose): Pair<Float, Float>? {
             val r = pose.rotation
