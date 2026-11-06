@@ -12,6 +12,8 @@ import com.trackstudio.app.playback.FrameSource
 import com.trackstudio.app.playback.PlaybackController
 import com.trackstudio.app.playback.PlaybackState
 import com.trackstudio.app.tracking.CameraTrackingEngine
+import com.trackstudio.app.tracking.GlobalReconstructionEngine
+import com.trackstudio.app.tracking.ReconstructionMode
 import com.trackstudio.app.tracking.ReconstructionEngine
 import com.trackstudio.app.tracking.CameraTrackingProgress
 import com.trackstudio.app.tracking.TrackingVerificationProjector
@@ -64,13 +66,14 @@ data class ViewerUiState(
     val trackingProgress: CameraTrackingProgress? = null,
     val trackingError: String? = null,
     val trackingSummary: CameraTrackingSummary? = null,
+    val reconstructionMode: ReconstructionMode = ReconstructionMode.CUSTOM,
     val trackingPointsByFrame: Map<Int, List<com.trackstudio.app.tracking.CameraFeatureObservation>> = emptyMap(),
     val trackingVerificationByFrame: Map<Int, List<TrackingVerificationSegment>> = emptyMap()
 )
 
 class ViewerViewModel(
     private val appContext: Context,
-    private val reconstructionEngine: ReconstructionEngine = CameraTrackingEngine()
+    private val customEngine: ReconstructionEngine = CameraTrackingEngine()
 ) : ViewModel() {
 
     companion object {
@@ -80,6 +83,8 @@ class ViewerViewModel(
         private const val DEFAULT_AHEAD = 3
         private const val MAX_AHEAD = 8
     }
+
+    private var reconstructionEngine: ReconstructionEngine = customEngine
 
     private val _uiState = MutableStateFlow(ViewerUiState())
     val uiState: StateFlow<ViewerUiState> = _uiState.asStateFlow()
@@ -196,6 +201,23 @@ class ViewerViewModel(
 
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null, trackingError = null) }
+    }
+
+    fun setReconstructionMode(mode: ReconstructionMode) {
+        if (_uiState.value.isAutoTracking) return
+        reconstructionEngine = when (mode) {
+            ReconstructionMode.CUSTOM -> customEngine
+            ReconstructionMode.GLOBAL -> GlobalReconstructionEngine()
+        }
+        _uiState.update {
+            it.copy(
+                reconstructionMode = mode,
+                trackingSummary = null,
+                trackingError = null,
+                trackingPointsByFrame = emptyMap(),
+                trackingVerificationByFrame = emptyMap()
+            )
+        }
     }
 
     fun startAutoTrack() {
