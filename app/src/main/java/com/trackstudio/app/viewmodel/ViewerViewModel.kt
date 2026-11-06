@@ -46,7 +46,12 @@ data class CameraTrackingSummary(
     val landmarkCount: Int,
     val inlierRatio: Double,
     val initialPairFrames: Pair<Int, Int>?,
-    val meanReprojectionErrorPx: Double = 0.0
+    val meanReprojectionErrorPx: Double = 0.0,
+    val globalPositioningApplied: Boolean = false,
+    val globalPositioningInitialCost: Double = Double.NaN,
+    val globalPositioningFinalCost: Double = Double.NaN,
+    val globalPositioningIterations: Int = 0,
+    val globalPositioningStatus: String = "Not run"
 )
 
 data class ViewerUiState(
@@ -268,7 +273,12 @@ class ViewerViewModel(
                             result.inlierRatio,
                             result.initialPairFrames,
                             result.landmarks.map { it.meanReprojectionErrorPx }
-                                .filter { it.isFinite() }.average().takeIf { it.isFinite() } ?: 0.0
+                                .filter { it.isFinite() }.average().takeIf { it.isFinite() } ?: 0.0,
+                            result.globalPositioningApplied,
+                            result.globalPositioningInitialCost,
+                            result.globalPositioningFinalCost,
+                            result.globalPositioningIterations,
+                            result.globalPositioningStatus
                         ),
                         trackingPointsByFrame = pointsByFrame,
                         trackingVerificationByFrame = verificationByFrame,
