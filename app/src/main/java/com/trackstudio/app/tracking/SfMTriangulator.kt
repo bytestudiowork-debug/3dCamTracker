@@ -32,7 +32,8 @@ internal object SfMTriangulator {
         cameraMatrix: Mat,
         maximumReprojectionErrorPx: Double = 4.0,
         minimumParallaxDegrees: Double = 1.0,
-        minimumObservationInlierRatio: Double = 0.70
+        minimumObservationInlierRatio: Double = 0.70,
+        onProgress: (Int, Int) -> Unit = { _, _ -> }
     ): TriangulationResult {
         require(cameraMatrix.rows() == 3 && cameraMatrix.cols() == 3 && !cameraMatrix.empty()) {
             "Camera matrix must be a non-empty 3x3 matrix."
@@ -44,7 +45,8 @@ internal object SfMTriangulator {
         var rejectedGeometry = 0
         var rejectedReprojection = 0
 
-        for (track in featureTracks) {
+        for ((trackIndex, track) in featureTracks.withIndex()) {
+            if (trackIndex % 16 == 0 || trackIndex == featureTracks.lastIndex) onProgress(trackIndex + 1, featureTracks.size)
             if (track.observations.size < 2) {
                 rejectedShort++
                 continue

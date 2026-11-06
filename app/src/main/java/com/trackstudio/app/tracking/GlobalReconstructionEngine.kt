@@ -5,6 +5,12 @@ import com.trackstudio.app.tracking.glomap.GlomapGlobalPositioningProblemBuilder
 import com.trackstudio.app.tracking.glomap.GlomapGlobalBundleAdjuster
 import com.trackstudio.app.tracking.glomap.GlomapNativeSolver
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -20,6 +26,9 @@ import org.opencv.features2d.BFMatcher
 import org.opencv.features2d.ORB
 import org.opencv.imgproc.Imgproc
 import kotlin.math.sqrt
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Independent global reconstruction path.
@@ -35,7 +44,7 @@ import kotlin.math.sqrt
  * known/approximated by the caller; metric scale remains a reconstruction gauge.
  */
 class GlobalReconstructionEngine(
-    private val maxFeatures: Int = 1600,
+    private val maxFeatures: Int = 1400,
     private val ratioThreshold: Float = 0.78f,
     private val maximumPairCount: Int = 420
 ) : ReconstructionEngine {
@@ -69,9 +78,14 @@ class GlobalReconstructionEngine(
         check(OpenCvRuntime.ensureLoaded()) { "OpenCV could not be initialized on this device." }
 
         val orb = ORB.create(maxFeatures.coerceIn(500, 4000))
-        val matcher = BFMatcher.create(Core.NORM_HAMMING, false)
         val frames = arrayOfNulls<FrameFeatures>(frameCount)
         var decodedFrames = 0
+        val progressScope = CoroutineScope(currentCoroutineContext())
+        fun publishProgress(phase: String, fraction: Float) {
+            progressScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                onProgress(CameraTrackingProgress(frameCount, frameCount, phase, fraction, decodedFrames, frameCount))
+            }
+        }
         try {
             // Global reconstruction starts from the entire sequence, not an
             // initialization pair selected by the Custom engine.
@@ -117,30 +131,42 @@ class GlobalReconstructionEngine(
             }
 
             val candidatePairs = buildPairSchedule(frameCount, maximumPairCount)
-            val verifiedPairs = ArrayList<VerifiedPair>()
-            var totalMatches = 0
-            var totalInliers = 0
-            for ((pairIndex, pair) in candidatePairs.withIndex()) {
-                currentCoroutineContext().ensureActive()
-                val first = frames[pair.first] ?: continue
-                val second = frames[pair.second] ?: continue
-                val verified = verifyPair(pair.first, pair.second, first, second, cameraMatrix, matcher)
-                if (verified != null) {
-                    verifiedPairs += verified
-                    totalMatches += verified.matchCount
-                    totalInliers += verified.inlierMatches.size
-                }
-                onProgress(
-                    CameraTrackingProgress(
-                        frameIndex = pair.second + 1,
-                        frameCount = frameCount,
-                        phase = "Building verified global view graph",
-                        overallFraction = 0.25f + 0.30f * (pairIndex + 1) / candidatePairs.size.coerceAtLeast(1),
-                        completedFrames = decodedFrames,
-                        totalFrames = frameCount
-                    )
-                )
+            val completedPairs = AtomicInteger(0)
+            val progressMutex = Mutex()
+            val workerCount = minOf(Runtime.getRuntime().availableProcessors().coerceAtLeast(1), 2, candidatePairs.size.coerceAtLeast(1))
+            val chunks = candidatePairs.chunked((candidatePairs.size + workerCount - 1) / workerCount)
+            val verifiedPairs = coroutineScope {
+                chunks.map { chunk ->
+                    async(Dispatchers.Default) {
+                        val workerMatcher = BFMatcher.create(Core.NORM_HAMMING, false)
+                        try {
+                            chunk.mapNotNull { pair ->
+                                currentCoroutineContext().ensureActive()
+                                val first = frames[pair.first] ?: return@mapNotNull null
+                                val second = frames[pair.second] ?: return@mapNotNull null
+                                val verified = verifyPair(pair.first, pair.second, first, second, cameraMatrix, workerMatcher)
+                                val completed = completedPairs.incrementAndGet()
+                                if (completed % 2 == 0 || completed == candidatePairs.size) {
+                                    progressMutex.withLock {
+                                        val current = completedPairs.get()
+                                        onProgress(CameraTrackingProgress(
+                                            frameCount, frameCount,
+                                            "Verifying image pairs " + current + "/" + candidatePairs.size,
+                                            0.25f + 0.30f * current / candidatePairs.size.coerceAtLeast(1),
+                                            decodedFrames, frameCount
+                                        ))
+                                    }
+                                }
+                                verified
+                            }
+                        } finally {
+                            workerMatcher.clear()
+                        }
+                    }
+                }.awaitAll().flatten()
             }
+            val totalMatches = verifiedPairs.sumOf { it.matchCount }
+            val totalInliers = verifiedPairs.sumOf { it.inlierMatches.size }
             if (verifiedPairs.isEmpty()) {
                 throw IllegalStateException("No image pairs passed geometric verification. Use textured footage with visible camera translation.")
             }
@@ -276,7 +302,8 @@ class GlobalReconstructionEngine(
                     point?.let { id to it }
                 }.toMap(),
                 maxIterations = 100,
-                numThreads = Runtime.getRuntime().availableProcessors().coerceIn(1, 4)
+                numThreads = Runtime.getRuntime().availableProcessors().coerceIn(1, 4),
+                onIteration = { iteration, total -> publishProgress("Global position solve " + iteration + "/" + total, 0.78f + 0.10f * iteration.toFloat() / total.coerceAtLeast(1)) }
             ) ?: throw IllegalStateException("The global camera-position and point solve did not converge to a usable solution.")
 
             onProgress(
@@ -295,8 +322,9 @@ class GlobalReconstructionEngine(
                 pointsByTrackId = positionResult.pointsByTrackId,
                 tracks = tracks,
                 cameraMatrix = cameraMatrix,
-                maxIterations = 60,
-                numThreads = Runtime.getRuntime().availableProcessors().coerceIn(1, 4)
+                maxIterations = 45,
+                numThreads = Runtime.getRuntime().availableProcessors().coerceIn(1, 4),
+                onIteration = { iteration, total -> publishProgress("Global bundle adjustment " + iteration + "/" + total, 0.88f + 0.05f * iteration.toFloat() / total.coerceAtLeast(1)) }
             ) ?: throw IllegalStateException("Global bundle adjustment could not produce a usable joint camera-and-point solution.")
 
             val poses = activeFrames.mapNotNull { frame ->
@@ -320,7 +348,12 @@ class GlobalReconstructionEngine(
                     totalFrames = frameCount
                 )
             )
-            val triangulated = SfMTriangulator.triangulate(tracks, poses, cameraMatrix)
+            val triangulated = SfMTriangulator.triangulate(
+                tracks, poses, cameraMatrix,
+                onProgress = { completed, total ->
+                    publishProgress("Triangulating landmarks " + completed + "/" + total, 0.94f + 0.02f * completed.toFloat() / total.coerceAtLeast(1))
+                }
+            )
             val poseByFrame = poses.associateBy { it.frameIndex }
             val bundleLandmarks = tracks.mapNotNull trackLoop@ { track ->
                 val point = bundleResult.pointsByTrackId[track.id] ?: return@trackLoop null
@@ -348,7 +381,10 @@ class GlobalReconstructionEngine(
                 featureTracks = tracks,
                 landmarks = mergedLandmarks.values.toList(),
                 poses = poses,
-                cameraMatrix = cameraMatrix
+                cameraMatrix = cameraMatrix,
+                onProgress = { completed, total ->
+                    publishProgress("Refining landmarks " + completed + "/" + total, 0.96f + 0.03f * completed.toFloat() / total.coerceAtLeast(1))
+                }
             )
             val diagnostics = activeFrames.map { frame ->
                 val frameTrackCount = tracks.count { track -> track.observations.any { it.frameIndex == frame } }
@@ -403,7 +439,6 @@ class GlobalReconstructionEngine(
             )
         } finally {
             frames.filterNotNull().forEach { it.descriptors.release() }
-            matcher.clear()
             orb.clear()
         }
     }
@@ -413,19 +448,20 @@ class GlobalReconstructionEngine(
         // Preserve a connected temporal backbone first; without this, a hard
         // pair cap could leave the tail of a long clip outside the view graph.
         for (first in 0 until frameCount - 1) pairs += first to first + 1
-        val pairBudget = maxOf(maximumPairs, frameCount - 1)
+        // Keep the adjacent-frame graph connected, but sample wider baselines.
+        val pairBudget = maxOf(frameCount - 1, minOf(maximumPairs, frameCount * 2))
         // Add progressively wider baselines across the whole sequence before
         // spending the remaining budget on long-range loop-closure candidates.
         for (offset in listOf(2, 4, 8, 16, 32)) {
-            for (first in 0 until frameCount - offset) {
+            for (first in 0 until frameCount - offset step offset) {
                 pairs += first to first + offset
                 if (pairs.size >= pairBudget) return pairs.toList()
             }
         }
-        val stride = (frameCount / 12).coerceAtLeast(1)
-        for (first in 0 until frameCount step stride) {
-            for (second in first + stride * 2 until frameCount step stride) {
-                pairs += first to second
+        val anchorStride = (frameCount / 8).coerceAtLeast(1)
+        for (first in 0 until frameCount step anchorStride) {
+            for (second in listOf(frameCount - 1, frameCount / 2)) {
+                if (second - first > 1) pairs += first to second
                 if (pairs.size >= pairBudget) return pairs.toList()
             }
         }
@@ -477,7 +513,7 @@ class GlobalReconstructionEngine(
             points2.fromList(matched.map { second.keypoints[it.second].pt })
             val essential = Calib3d.findEssentialMat(
                 points1, points2, cameraMatrix, Calib3d.RANSAC,
-                0.999, 1.0, 1500, essentialMask
+                0.999, 1.0, 900, essentialMask
             )
             try {
                 if (essential.empty() || essential.cols() != 3 ||

@@ -1,5 +1,6 @@
 #include <jni.h>
 #include <ceres/ceres.h>
+#include "glomap_progress_callback.h"
 
 #include <algorithm>
 #include <cmath>
@@ -48,7 +49,8 @@ Java_com_trackstudio_app_tracking_glomap_GlomapNativeSolver_nativeSolve(
         jdoubleArray initial_scales_array,
         jdoubleArray loss_scales_array,
         jint max_iterations,
-        jint num_threads) {
+        jint num_threads,
+        jobject progress_listener) {
     if (!frame_centers_array || !points_array || !frame_indices_array ||
         !track_indices_array || !directions_array || !initial_scales_array ||
         !loss_scales_array) {
@@ -154,6 +156,8 @@ Java_com_trackstudio_app_tracking_glomap_GlomapNativeSolver_nativeSolve(
     options.minimizer_progress_to_stdout = false;
     options.linear_solver_ordering = ordering;
 
+    trackstudio::JniProgressCallback progress_callback(env, progress_listener, std::min(max_iterations, 100));
+    if (progress_callback.valid()) options.callbacks.push_back(&progress_callback);
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
 

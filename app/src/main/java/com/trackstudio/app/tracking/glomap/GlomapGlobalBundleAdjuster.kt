@@ -24,7 +24,8 @@ internal class GlomapGlobalBundleAdjuster {
         tracks: List<CameraFeatureTrack>,
         cameraMatrix: Mat,
         maxIterations: Int = 60,
-        numThreads: Int = Runtime.getRuntime().availableProcessors().coerceIn(1, 4)
+        numThreads: Int = Runtime.getRuntime().availableProcessors().coerceIn(1, 4),
+        onIteration: (Int, Int) -> Unit = { _, _ -> }
     ): Result? {
         require(maxIterations > 0 && numThreads > 0)
         if (cameraMatrix.empty() || cameraMatrix.rows() != 3 || cameraMatrix.cols() != 3) return null
@@ -84,7 +85,8 @@ internal class GlomapGlobalBundleAdjuster {
 
         val packed = nativeSolve(
             centers, rotations, points, frameIndices, trackIndices,
-            imagePoints, intrinsics, maxIterations, numThreads
+            imagePoints, intrinsics, maxIterations, numThreads,
+            GlomapSolverProgressListener(onIteration)
         )
         val expected = 4 + centers.size + points.size
         if (packed.size != expected || packed[0] != 1.0 ||
@@ -124,7 +126,8 @@ internal class GlomapGlobalBundleAdjuster {
         imagePoints: DoubleArray,
         intrinsics: DoubleArray,
         maxIterations: Int,
-        numThreads: Int
+        numThreads: Int,
+        progressListener: GlomapSolverProgressListener
     ): DoubleArray
 
     private fun requireVector3(value: DoubleArray) {

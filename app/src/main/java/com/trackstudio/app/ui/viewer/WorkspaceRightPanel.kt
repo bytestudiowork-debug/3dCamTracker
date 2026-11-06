@@ -265,6 +265,10 @@ private fun TrackingToolsCard(
                         Box(Modifier.fillMaxWidth().padding(top = 5.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(PanelBorder)) {
                             Box(Modifier.fillMaxWidth((progress?.fraction ?: 0f).coerceIn(0f, 1f)).height(3.dp).background(AccentPrimary))
                         }
+                        Row(Modifier.fillMaxWidth().padding(top = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(progress?.phase ?: "Preparing", color = TextSecondary, fontSize = 9.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                            Text(((progress?.fraction ?: 0f) * 100).roundToInt().toString() + "%", color = TextSecondary, fontSize = 9.sp)
+                        }
                     }
                 }
             }

@@ -1,5 +1,9 @@
 package com.trackstudio.app.tracking.glomap
 
+internal fun interface GlomapSolverProgressListener {
+    fun onIteration(iteration: Int, totalIterations: Int)
+}
+
 /**
  * JNI bridge for the GLOMAP ONLY_POINTS global-positioning solve.
  * Input order is stable and caller-controlled, matching the Kotlin problem builder.
@@ -19,7 +23,8 @@ internal class GlomapNativeSolver {
         frameCentersById: Map<Int, DoubleArray>,
         pointsByTrackId: Map<Int, DoubleArray>,
         maxIterations: Int = 100,
-        numThreads: Int = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+        numThreads: Int = Runtime.getRuntime().availableProcessors().coerceAtLeast(1),
+        onIteration: (Int, Int) -> Unit = { _, _ -> }
     ): Result? {
         require(maxIterations > 0 && numThreads > 0)
         if (problem.constraints.isEmpty()) return null
@@ -51,7 +56,8 @@ internal class GlomapNativeSolver {
 
         val packed = nativeSolve(
             initialFrames, initialPoints, frameIndices, trackIndices,
-            directions, scales, lossScales, maxIterations, numThreads
+            directions, scales, lossScales, maxIterations, numThreads,
+            GlomapSolverProgressListener(onIteration)
         )
         val expectedSize = 4 + initialFrames.size + initialPoints.size + scales.size
         if (packed.size != expectedSize || packed[0] != 1.0) return null
@@ -89,7 +95,8 @@ internal class GlomapNativeSolver {
         initialScales: DoubleArray,
         lossScales: DoubleArray,
         maxIterations: Int,
-        numThreads: Int
+        numThreads: Int,
+        progressListener: GlomapSolverProgressListener
     ): DoubleArray
 
     private fun requireVector3(value: DoubleArray, label: String) {

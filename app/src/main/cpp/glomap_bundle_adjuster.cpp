@@ -1,5 +1,6 @@
 #include <jni.h>
 #include <ceres/ceres.h>
+#include "glomap_progress_callback.h"
 
 #include <algorithm>
 #include <cmath>
@@ -79,7 +80,8 @@ Java_com_trackstudio_app_tracking_glomap_GlomapGlobalBundleAdjuster_nativeSolve(
         jdoubleArray image_points_array,
         jdoubleArray intrinsics_array,
         jint max_iterations,
-        jint num_threads) {
+        jint num_threads,
+        jobject progress_listener) {
     if (!camera_centers_array || !rotations_array || !points_array ||
         !frame_indices_array || !track_indices_array || !image_points_array ||
         !intrinsics_array) {
@@ -169,8 +171,13 @@ Java_com_trackstudio_app_tracking_glomap_GlomapGlobalBundleAdjuster_nativeSolve(
     problem.SetParameterBlockConstant(centers.data() + scale_anchor * 3);
 
     ceres::Solver::Options options;
-    options.linear_solver_type = ceres::SPARSE_SCHUR;
-    options.preconditioner_type = ceres::JACOBI;
+    // Dense Schur is usually faster for bundle adjustment with about 100 cameras.
+    if (frame_count <= 100) {
+        options.linear_solver_type = ceres::DENSE_SCHUR;
+    } else {
+        options.linear_solver_type = ceres::SPARSE_SCHUR;
+        options.preconditioner_type = ceres::JACOBI;
+    }
     options.max_num_iterations = std::min(max_iterations, 60);
     options.num_threads = std::min(num_threads, 4);
     options.function_tolerance = 1e-6;
@@ -178,6 +185,8 @@ Java_com_trackstudio_app_tracking_glomap_GlomapGlobalBundleAdjuster_nativeSolve(
     options.minimizer_progress_to_stdout = false;
     options.linear_solver_ordering = ordering;
 
+    trackstudio::JniProgressCallback progress_callback(env, progress_listener, std::min(max_iterations, 60));
+    if (progress_callback.valid()) options.callbacks.push_back(&progress_callback);
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
     if (!summary.IsSolutionUsable() || !std::isfinite(summary.initial_cost) ||

@@ -24,7 +24,8 @@ internal object MobileBundleAdjuster {
         featureTracks: List<CameraFeatureTrack>,
         landmarks: List<CameraLandmark>,
         poses: List<CameraPose>,
-        cameraMatrix: Mat
+        cameraMatrix: Mat,
+        onProgress: (Int, Int) -> Unit = { _, _ -> }
     ): List<CameraLandmark> {
         if (landmarks.isEmpty() || cameraMatrix.empty()) return landmarks
         val fx = cameraMatrix.get(0, 0)?.firstOrNull() ?: return landmarks
@@ -44,7 +45,8 @@ internal object MobileBundleAdjuster {
                 }
         }
 
-        return landmarks.map { landmark ->
+        return landmarks.mapIndexed { landmarkIndex, landmark ->
+            if (landmarkIndex % 16 == 0 || landmarkIndex == landmarks.lastIndex) onProgress(landmarkIndex + 1, landmarks.size)
             val observations = observationsByTrack[landmark.trackId].orEmpty()
                 .filter { (observation, _) ->
                     observation.x.isFinite() && observation.y.isFinite()
