@@ -2,6 +2,7 @@ package com.trackstudio.app.tracking
 
 import com.trackstudio.app.tracking.glomap.GlomapGlobalPositioningInitializer
 import com.trackstudio.app.tracking.glomap.GlomapGlobalPositioningProblemBuilder
+import com.trackstudio.app.tracking.glomap.GlomapGlobalBundleAdjuster
 import com.trackstudio.app.tracking.glomap.GlomapNativeSolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -10,6 +11,7 @@ import kotlinx.coroutines.withContext
 import org.opencv.calib3d.Calib3d
 import org.opencv.core.Core
 import org.opencv.core.Mat
+import org.opencv.core.Point3
 import org.opencv.core.MatOfDMatch
 import org.opencv.core.MatOfPoint2f
 import org.opencv.core.KeyPoint
@@ -277,9 +279,29 @@ class GlobalReconstructionEngine(
                 numThreads = Runtime.getRuntime().availableProcessors().coerceIn(1, 4)
             ) ?: throw IllegalStateException("The global camera-position and point solve did not converge to a usable solution.")
 
+            onProgress(
+                CameraTrackingProgress(
+                    frameIndex = frameCount,
+                    frameCount = frameCount,
+                    phase = "Joint global bundle adjustment",
+                    overallFraction = 0.88f,
+                    completedFrames = decodedFrames,
+                    totalFrames = frameCount
+                )
+            )
+            val bundleResult = GlomapGlobalBundleAdjuster().solve(
+                frameCentersById = positionResult.frameCentersById,
+                rotationsByFrame = rotations,
+                pointsByTrackId = positionResult.pointsByTrackId,
+                tracks = tracks,
+                cameraMatrix = cameraMatrix,
+                maxIterations = 60,
+                numThreads = Runtime.getRuntime().availableProcessors().coerceIn(1, 4)
+            ) ?: throw IllegalStateException("Global bundle adjustment could not produce a usable joint camera-and-point solution.")
+
             val poses = activeFrames.mapNotNull { frame ->
                 val rotation = rotations[frame] ?: return@mapNotNull null
-                val center = positionResult.frameCentersById[frame] ?: return@mapNotNull null
+                val center = bundleResult.frameCentersById[frame] ?: return@mapNotNull null
                 val translation = doubleArrayOf(
                     -(rotation[0] * center[0] + rotation[1] * center[1] + rotation[2] * center[2]),
                     -(rotation[3] * center[0] + rotation[4] * center[1] + rotation[5] * center[2]),
@@ -293,15 +315,38 @@ class GlobalReconstructionEngine(
                     frameIndex = frameCount,
                     frameCount = frameCount,
                     phase = "Retriangulating and refining global landmarks",
-                    overallFraction = 0.92f,
+                    overallFraction = 0.94f,
                     completedFrames = decodedFrames,
                     totalFrames = frameCount
                 )
             )
             val triangulated = SfMTriangulator.triangulate(tracks, poses, cameraMatrix)
+            val poseByFrame = poses.associateBy { it.frameIndex }
+            val bundleLandmarks = tracks.mapNotNull trackLoop@ { track ->
+                val point = bundleResult.pointsByTrackId[track.id] ?: return@trackLoop null
+                val errors = track.observations.mapNotNull observationLoop@ { observation ->
+                    val pose = poseByFrame[observation.frameIndex] ?: return@observationLoop null
+                    reprojectionError(cameraMatrix, pose, point, observation)
+                }
+                if (errors.size < 2) return@trackLoop null
+                CameraLandmark(
+                    trackId = track.id,
+                    position = Point3(point[0], point[1], point[2]),
+                    observationCount = errors.size,
+                    meanReprojectionErrorPx = errors.average()
+                )
+            }
+            val mergedLandmarks = linkedMapOf<Int, CameraLandmark>()
+            bundleLandmarks.forEach { mergedLandmarks[it.trackId] = it }
+            triangulated.landmarks.forEach { candidate ->
+                val previous = mergedLandmarks[candidate.trackId]
+                if (previous == null ||
+                    candidate.meanReprojectionErrorPx < previous.meanReprojectionErrorPx
+                ) mergedLandmarks[candidate.trackId] = candidate
+            }
             val refinedLandmarks = MobileBundleAdjuster.optimizeLandmarks(
                 featureTracks = tracks,
-                landmarks = triangulated.landmarks,
+                landmarks = mergedLandmarks.values.toList(),
                 poses = poses,
                 cameraMatrix = cameraMatrix
             )
@@ -351,10 +396,10 @@ class GlobalReconstructionEngine(
                 viewGraphAcceptedEdgeCount = rotationPass.acceptedEdges.size,
                 globalRotationIterations = firstRotationPass.iterations + rotationPass.iterations,
                 globalPositioningApplied = true,
-                globalPositioningInitialCost = positionResult.initialCost,
-                globalPositioningFinalCost = positionResult.finalCost,
-                globalPositioningIterations = positionResult.iterations,
-                globalPositioningStatus = "Global position and point solve completed"
+                globalPositioningInitialCost = bundleResult.initialCost,
+                globalPositioningFinalCost = bundleResult.finalCost,
+                globalPositioningIterations = positionResult.iterations + bundleResult.iterations,
+                globalPositioningStatus = "Global positioning and bundle adjustment completed"
             )
         } finally {
             frames.filterNotNull().forEach { it.descriptors.release() }
@@ -427,7 +472,7 @@ class GlobalReconstructionEngine(
         val bestMask = Mat()
         val bestRotation = Mat()
         val bestTranslation = Mat()
-        try {
+        return try {
             points1.fromList(matched.map { first.keypoints[it.first].pt })
             points2.fromList(matched.map { second.keypoints[it.second].pt })
             val essential = Calib3d.findEssentialMat(
@@ -492,6 +537,28 @@ class GlobalReconstructionEngine(
             bestRotation.release()
             bestTranslation.release()
         }
+    }
+
+    private fun reprojectionError(
+        cameraMatrix: Mat,
+        pose: CameraPose,
+        point: DoubleArray,
+        observation: CameraFeatureObservation
+    ): Double? {
+        val r = pose.rotation
+        val t = pose.translation
+        val x = r[0] * point[0] + r[1] * point[1] + r[2] * point[2] + t[0]
+        val y = r[3] * point[0] + r[4] * point[1] + r[5] * point[2] + t[1]
+        val z = r[6] * point[0] + r[7] * point[1] + r[8] * point[2] + t[2]
+        if (!z.isFinite() || z <= 1e-6) return null
+        val fx = cameraMatrix.get(0, 0)[0]
+        val skew = cameraMatrix.get(0, 1)[0]
+        val cx = cameraMatrix.get(0, 2)[0]
+        val fy = cameraMatrix.get(1, 1)[0]
+        val cy = cameraMatrix.get(1, 2)[0]
+        val dx = (fx * x + skew * y) / z + cx - observation.x
+        val dy = fy * y / z + cy - observation.y
+        return sqrt(dx * dx + dy * dy).takeIf { it.isFinite() }
     }
 
     private fun toGray(source: Mat): Mat {
