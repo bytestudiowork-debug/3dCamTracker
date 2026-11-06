@@ -27,6 +27,15 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(eigen)
 
+# Eigen's FetchContent build generates Eigen3Config.cmake in its binary
+# directory. Ceres uses find_package(Eigen3), so expose that exact package
+# location to the nested Ceres configure step.
+set(Eigen3_DIR "${eigen_BINARY_DIR}" CACHE PATH "Eigen 3.4 package directory" FORCE)
+list(PREPEND CMAKE_PREFIX_PATH "${eigen_BINARY_DIR}")
+if(NOT EXISTS "${Eigen3_DIR}/Eigen3Config.cmake")
+    message(FATAL_ERROR "Eigen3Config.cmake was not generated at ${Eigen3_DIR}")
+endif()
+
 FetchContent_Declare(
         ceres
         GIT_REPOSITORY https://ceres-solver.googlesource.com/ceres-solver
