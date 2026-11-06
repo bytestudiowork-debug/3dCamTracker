@@ -24,7 +24,7 @@ android {
 
         externalNativeBuild {
             cmake {
-                cppFlags += listOf("-std=c++17", "-fno-exceptions", "-fno-rtti")
+                cppFlags += listOf("-std=c++17")
                 // -O3 always: this is a compute-bound module (image decode/resize),
                 // there is no debug-vs-release native perf tradeoff worth making.
                 arguments += listOf("-DANDROID_STL=c++_shared")
