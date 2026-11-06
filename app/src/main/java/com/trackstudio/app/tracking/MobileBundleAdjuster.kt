@@ -51,17 +51,17 @@ internal object MobileBundleAdjuster {
                 .filter { (observation, _) ->
                     observation.x.isFinite() && observation.y.isFinite()
                 }
-            if (observations.size < 2) return@map landmark
+            if (observations.size < 2) return@mapIndexed landmark
 
             var point = doubleArrayOf(
                 landmark.position.x,
                 landmark.position.y,
                 landmark.position.z
             )
-            if (point.any { !it.isFinite() }) return@map landmark
+            if (point.any { !it.isFinite() }) return@mapIndexed landmark
 
             var currentCost = robustCost(point, observations, fx, fy, cx, cy)
-            if (!currentCost.isFinite()) return@map landmark
+            if (!currentCost.isFinite()) return@mapIndexed landmark
 
             repeat(MAX_ITERATIONS) {
                 val normal = Array(3) { DoubleArray(3) }
