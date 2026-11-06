@@ -36,6 +36,10 @@ if(NOT EXISTS "${Eigen3_DIR}/Eigen3Config.cmake")
     message(FATAL_ERROR "Eigen3Config.cmake was not generated at ${Eigen3_DIR}")
 endif()
 
+# Eigen already defines an uninstall target; Ceres must not define it again
+# when both projects are configured in this Android build.
+set(PROVIDE_UNINSTALL_TARGET OFF CACHE BOOL "Do not add Ceres uninstall target" FORCE)
+
 FetchContent_Declare(
         ceres
         GIT_REPOSITORY https://ceres-solver.googlesource.com/ceres-solver
