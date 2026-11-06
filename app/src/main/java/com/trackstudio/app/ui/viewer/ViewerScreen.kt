@@ -98,7 +98,7 @@ fun ViewerScreen(
     var zoom by remember { mutableFloatStateOf(1f) }
     var fullscreen by remember { mutableStateOf(false) }
     var panelOpen by remember { mutableStateOf(true) }
-    var showVerificationOverlay by remember { mutableStateOf(true) }
+    var showVerificationOverlay by remember { mutableStateOf(false) }
     var showTrackPointsOverlay by remember { mutableStateOf(true) }
     var markerColorArgb by remember { mutableIntStateOf(0xFF00E5FF.toInt()) }
     var markerSizeDp by remember { mutableFloatStateOf(3f) }
@@ -359,41 +359,11 @@ private fun ViewerPanel(
             modifier = Modifier.fillMaxSize()
         )
 
-        if (!fullscreen) {
-            OverlayChip(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(if (compact) 8.dp else 10.dp),
-                compact = compact,
-                onClick = onToggleFullscreen
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Fullscreen,
-                    contentDescription = "Fullscreen",
-                    tint = TextPrimary,
-                    modifier = Modifier.size(if (compact) 18.dp else 22.dp)
-                )
-            }
-        } else {
-            OverlayChip(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(if (compact) 8.dp else 12.dp),
-                compact = compact,
-                onClick = onToggleFullscreen
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.FullscreenExit,
-                    contentDescription = "Exit fullscreen",
-                    tint = TextPrimary,
-                    modifier = Modifier.size(if (compact) 18.dp else 22.dp)
-                )
-            }
-        }
+
 
         if (showTrackPointsOverlay && trackingPoints.isNotEmpty()) {
             Text(
-                text = "TRACK POINTS · ${trackingPoints.size}",
+                text = "TRACKED AREA · ${trackingPoints.size} FEATURES",
                 color = Color(0xFF00E5FF),
                 fontSize = 10.sp,
                 modifier = Modifier
