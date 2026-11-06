@@ -14,6 +14,9 @@ import org.opencv.core.Point
 import org.opencv.features2d.BFMatcher
 import org.opencv.features2d.ORB
 import org.opencv.imgproc.Imgproc
+import org.opencv.core.Point3
+import com.trackstudio.app.tracking.glomap.GlomapGlobalPositioningProblemBuilder
+import com.trackstudio.app.tracking.glomap.GlomapNativeSolver
 import kotlin.math.max
 
 /**
@@ -698,6 +701,145 @@ internal class IncrementalSfMSolver(
                 }
             }
 
+            // Refine the incremental camera centers and sparse points with the
+            // pinned GLOMAP ONLY_POINTS formulation. The current PnP/triangulation
+            // map supplies a stable initialization; only registered observations
+            // with an existing 3D point enter the Ceres problem.
+            var globalPositioningApplied = false
+            var globalPositioningInitialCost = Double.NaN
+            var globalPositioningFinalCost = Double.NaN
+            var globalPositioningIterations = 0
+            var globalPositioningStatus = "Skipped: insufficient registered tracks"
+
+            val fx = cameraMatrix.get(0, 0)[0]
+            val skew = cameraMatrix.get(0, 1)[0]
+            val cx = cameraMatrix.get(0, 2)[0]
+            val fy = cameraMatrix.get(1, 1)[0]
+            val cy = cameraMatrix.get(1, 2)[0]
+            val validPoseByFrame = poseByFrame.filterNotNull().filter { pose ->
+                pose.status != CameraPoseStatus.HELD_LAST_VALID &&
+                    pose.status != CameraPoseStatus.UNREGISTERED
+            }.associateBy { it.frameIndex }
+
+            fun cameraCenter(pose: CameraPose): DoubleArray {
+                val r = pose.rotation
+                val t = pose.translation
+                return doubleArrayOf(
+                    -(r[0] * t[0] + r[3] * t[1] + r[6] * t[2]),
+                    -(r[1] * t[0] + r[4] * t[1] + r[7] * t[2]),
+                    -(r[2] * t[0] + r[5] * t[1] + r[8] * t[2])
+                )
+            }
+
+            val initialCameraCenters = validPoseByFrame.mapValues { (_, pose) ->
+                cameraCenter(pose)
+            }
+            val initialPointsByTrack = landmarksByTrack.mapValues { (_, landmark) ->
+                doubleArrayOf(landmark.position.x, landmark.position.y, landmark.position.z)
+            }
+
+            val globalTracks = tracks.mapNotNull { track ->
+                val point = initialPointsByTrack[track.id] ?: return@mapNotNull null
+                val observations = track.observations.mapNotNull { observation ->
+                    val pose = validPoseByFrame[observation.frameIndex] ?: return@mapNotNull null
+                    if (!fx.isFinite() || !fy.isFinite() ||
+                        kotlin.math.abs(fx) < 1e-9 || kotlin.math.abs(fy) < 1e-9 ||
+                        !observation.x.isFinite() || !observation.y.isFinite()
+                    ) return@mapNotNull null
+
+                    val normalizedY = (observation.y - cy) / fy
+                    val normalizedX = (observation.x - cx - skew * normalizedY) / fx
+                    GlomapGlobalPositioningProblemBuilder.CameraObservation(
+                        frameIndex = observation.frameIndex,
+                        rotation = pose.rotation,
+                        cameraCenter = initialCameraCenters.getValue(observation.frameIndex),
+                        undistortedFeatureDirection = doubleArrayOf(normalizedX, normalizedY, 1.0),
+                        // The current focal length is estimated, not user-calibrated.
+                        isCalibrated = false
+                    )
+                }
+                if (observations.size < GlomapGlobalPositioningProblemBuilder.DEFAULT_MINIMUM_TRACK_VIEWS) {
+                    null
+                } else {
+                    GlomapGlobalPositioningProblemBuilder.Track(
+                        trackId = track.id,
+                        observations = observations,
+                        initializedPoint = point
+                    )
+                }
+            }
+
+            if (globalTracks.size >= 10) {
+                val globalProblem = GlomapGlobalPositioningProblemBuilder.build(globalTracks)
+                if (globalProblem.constraints.size >= 30) {
+                    onProgress(
+                        CameraTrackingProgress(
+                            frameCount, frameCount, "Global positioning · Ceres",
+                            overallFraction = 0.985f,
+                            completedFrames = frameCount,
+                            totalFrames = frameCount
+                        )
+                    )
+                    try {
+                        val solution = GlomapNativeSolver().solve(
+                            problem = globalProblem,
+                            frameCentersById = initialCameraCenters,
+                            pointsByTrackId = initialPointsByTrack,
+                            maxIterations = 100,
+                            numThreads = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+                        )
+                        if (solution == null) {
+                            globalPositioningStatus = "Ceres did not return a usable solution"
+                        } else {
+                            globalPositioningInitialCost = solution.initialCost
+                            globalPositioningFinalCost = solution.finalCost
+                            globalPositioningIterations = solution.iterations
+                            if (solution.initialCost.isFinite() && solution.finalCost.isFinite() &&
+                                solution.finalCost < solution.initialCost
+                            ) {
+                                for ((frameId, center) in solution.frameCentersById) {
+                                    val oldPose = poseByFrame.getOrNull(frameId) ?: continue
+                                    val rotation = oldPose.rotation
+                                    val translation = doubleArrayOf(
+                                        -(rotation[0] * center[0] + rotation[1] * center[1] + rotation[2] * center[2]),
+                                        -(rotation[3] * center[0] + rotation[4] * center[1] + rotation[5] * center[2]),
+                                        -(rotation[6] * center[0] + rotation[7] * center[1] + rotation[8] * center[2])
+                                    )
+                                    poseByFrame[frameId] = oldPose.copy(translation = translation)
+                                }
+                                for ((trackId, point) in solution.pointsByTrackId) {
+                                    val old = landmarksByTrack[trackId] ?: continue
+                                    landmarksByTrack[trackId] = old.copy(
+                                        position = Point3(point[0], point[1], point[2])
+                                    )
+                                }
+                                globalPositioningApplied = true
+                                globalPositioningStatus = "Applied"
+                            } else {
+                                globalPositioningStatus = "No cost improvement; kept incremental solution"
+                            }
+                        }
+                    } catch (failure: LinkageError) {
+                        globalPositioningStatus = "Native solver unavailable: ${failure.message ?: "library load failed"}"
+                    } catch (failure: RuntimeException) {
+                        globalPositioningStatus = "Ceres solve skipped: ${failure.message ?: "runtime error"}"
+                    }
+                } else {
+                    globalPositioningStatus = "Skipped: fewer than 30 point-to-camera constraints"
+                }
+            } else {
+                globalPositioningStatus = "Skipped: fewer than 10 tracks with 3 registered views"
+            }
+
+            onProgress(
+                CameraTrackingProgress(
+                    frameCount, frameCount, "Global positioning complete",
+                    overallFraction = 0.99f,
+                    completedFrames = frameCount,
+                    totalFrames = frameCount
+                )
+            )
+
             val denseTimeline = ArrayList<CameraPose>(frameCount)
             var lastValid: CameraPose? = null
             for (index in 0 until frameCount) {
@@ -746,7 +888,12 @@ internal class IncrementalSfMSolver(
                 globalRotationsByFrame = viewGraphRotation?.rotationsByFrame.orEmpty(),
                 viewGraphEdgeCount = viewGraphRotation?.inputEdgeCount ?: 0,
                 viewGraphAcceptedEdgeCount = viewGraphRotation?.acceptedEdgeCount ?: 0,
-                globalRotationIterations = viewGraphRotation?.iterations ?: 0
+                globalRotationIterations = viewGraphRotation?.iterations ?: 0,
+                globalPositioningApplied = globalPositioningApplied,
+                globalPositioningInitialCost = globalPositioningInitialCost,
+                globalPositioningFinalCost = globalPositioningFinalCost,
+                globalPositioningIterations = globalPositioningIterations,
+                globalPositioningStatus = globalPositioningStatus
             )
         } finally {
             cache.values.forEach { it.descriptors.release() }
