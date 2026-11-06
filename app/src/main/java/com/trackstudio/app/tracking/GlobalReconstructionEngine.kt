@@ -386,15 +386,35 @@ class GlobalReconstructionEngine(
                     publishProgress("Refining landmarks " + completed + "/" + total, 0.96f + 0.03f * completed.toFloat() / total.coerceAtLeast(1))
                 }
             )
+            publishProgress("Finalizing camera diagnostics", 0.995f)
+            // Accumulate counts in one pass. The previous per-frame nested scan
+            // was O(frames × tracks × observations), which became a long silent
+            // tail on dense 99-frame reconstructions.
+            val frameTrackCounts = IntArray(frameCount)
+            tracks.forEachIndexed { trackIndex, track ->
+                if (trackIndex % 512 == 0) {
+                    publishProgress(
+                        "Finalizing camera diagnostics " + trackIndex + "/" + tracks.size,
+                        0.995f + 0.004f * trackIndex.toFloat() / tracks.size.coerceAtLeast(1)
+                    )
+                }
+                track.observations.asSequence().map { it.frameIndex }.distinct().forEach { frame ->
+                    if (frame in frameTrackCounts.indices) frameTrackCounts[frame]++
+                }
+            }
+            val frameMatchedCounts = IntArray(frameCount)
+            verifiedPairs.forEach { pair ->
+                val inliers = pair.inlierMatches.size
+                frameMatchedCounts[pair.first] += inliers
+                frameMatchedCounts[pair.second] += inliers
+            }
             val diagnostics = activeFrames.map { frame ->
-                val frameTrackCount = tracks.count { track -> track.observations.any { it.frameIndex == frame } }
                 val featureCount = frames[frame]?.keypoints?.size ?: 0
                 FrameTrackingDiagnostic(
                     frameIndex = frame,
                     detectedFeatures = featureCount,
-                    matchedFeatures = verifiedPairs.filter { it.first == frame || it.second == frame }
-                        .sumOf { it.inlierMatches.size },
-                    inlierFeatures = frameTrackCount,
+                    matchedFeatures = frameMatchedCounts[frame],
+                    inlierFeatures = frameTrackCounts[frame],
                     status = "Global reconstruction registered"
                 )
             }
@@ -452,7 +472,7 @@ class GlobalReconstructionEngine(
         val pairBudget = maxOf(frameCount - 1, minOf(maximumPairs, frameCount * 2))
         // Add progressively wider baselines across the whole sequence before
         // spending the remaining budget on long-range loop-closure candidates.
-        for (offset in listOf(2, 4, 8, 16, 32)) {
+        for (offset in listOf(2, 4, 8)) {
             for (first in 0 until frameCount - offset step offset) {
                 pairs += first to first + offset
                 if (pairs.size >= pairBudget) return pairs.toList()
