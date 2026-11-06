@@ -19,24 +19,33 @@ set(LAPACK OFF CACHE BOOL "" FORCE)
 set(ACCELERATESPARSE OFF CACHE BOOL "" FORCE)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# Eigen is header-only for this build. Do not configure its documentation,
-# examples, or test targets: they attempt to execute host-style binaries
-# during an Android cross-compile.
-set(BUILD_TESTING OFF CACHE BOOL "Disable dependency tests" FORCE)
-set(EIGEN_BUILD_TESTING OFF CACHE BOOL "Disable Eigen tests" FORCE)
-set(EIGEN_BUILD_DOC OFF CACHE BOOL "Disable Eigen documentation and examples" FORCE)
-set(EIGEN_BUILD_BLAS OFF CACHE BOOL "Disable Eigen BLAS library targets" FORCE)
-set(EIGEN_BUILD_LAPACK OFF CACHE BOOL "Disable Eigen LAPACK library targets" FORCE)
-set(EIGEN_BUILD_SPBENCH OFF CACHE BOOL "Disable Eigen sparse benchmark targets" FORCE)
-
+# Eigen is consumed as headers only. Populate its source without running
+# Eigen's top-level CMake project: that project adds optional BLAS/LAPACK,
+# benchmark and test targets which are not part of the Android application.
 FetchContent_Declare(
         eigen
         GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
         GIT_TAG 3.4.0
         GIT_SHALLOW TRUE
 )
-FetchContent_MakeAvailable(eigen)
+FetchContent_GetProperties(eigen)
+if(NOT eigen_POPULATED)
+    FetchContent_Populate(eigen)
+endif()
 
+# Ceres 2.2 uses find_package(Eigen3) and the Eigen3::Eigen target.
+# Supply a minimal config package pointing at the fetched header tree.
+set(Eigen3_DIR "${CMAKE_BINARY_DIR}/eigen3-config" CACHE PATH "Eigen 3.4 package directory" FORCE)
+file(MAKE_DIRECTORY "${Eigen3_DIR}")
+file(WRITE "${Eigen3_DIR}/Eigen3Config.cmake"
+"set(Eigen3_FOUND TRUE)\\n"
+"set(Eigen3_VERSION 3.4.0)\\n"
+"set(Eigen3_INCLUDE_DIRS \"\${eigen_SOURCE_DIR}\")\\n"
+"if(NOT TARGET Eigen3::Eigen)\\n"
+"  add_library(Eigen3::Eigen INTERFACE IMPORTED)\\n"
+"  set_target_properties(Eigen3::Eigen PROPERTIES INTERFACE_INCLUDE_DIRECTORIES \"\${eigen_SOURCE_DIR}\")\\n"
+"endif()\\n"
+)
 # Eigen's FetchContent build generates Eigen3Config.cmake in its binary
 # directory. Ceres uses find_package(Eigen3), so expose that exact package
 # location to the nested Ceres configure step.
