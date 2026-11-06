@@ -67,6 +67,10 @@ if(NOT TARGET Ceres::ceres)
     message(FATAL_ERROR "Ceres 2.2.0 did not export Ceres::ceres")
 endif()
 
+add_library(trackstudio_glomap SHARED glomap_positioner.cpp)
+target_link_libraries(trackstudio_glomap PRIVATE Ceres::ceres)
+target_compile_options(trackstudio_glomap PRIVATE -O3 -fno-fast-math)
+
 add_library(trackstudio_native SHARED proxy_engine.cpp)
 target_include_directories(trackstudio_native PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
