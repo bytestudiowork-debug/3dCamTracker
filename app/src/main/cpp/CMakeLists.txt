@@ -37,13 +37,13 @@ endif()
 # Supply a minimal config package pointing at the fetched header tree.
 set(Eigen3_DIR "${CMAKE_BINARY_DIR}/eigen3-config" CACHE PATH "Eigen 3.4 package directory" FORCE)
 file(MAKE_DIRECTORY "${Eigen3_DIR}")
-file(WRITE "\${Eigen3_DIR}/Eigen3Config.cmake"
+file(WRITE "${Eigen3_DIR}/Eigen3Config.cmake"
 "set(Eigen3_FOUND TRUE)\n"
 "set(Eigen3_VERSION 3.4.0)\n"
-"set(Eigen3_INCLUDE_DIRS \"\${eigen_SOURCE_DIR}\")\n"
+"set(Eigen3_INCLUDE_DIRS \"${eigen_SOURCE_DIR}\")\n"
 "if(NOT TARGET Eigen3::Eigen)\n"
 "  add_library(Eigen3::Eigen INTERFACE IMPORTED)\n"
-"  set_target_properties(Eigen3::Eigen PROPERTIES INTERFACE_INCLUDE_DIRECTORIES \"\${eigen_SOURCE_DIR}\")\n"
+"  set_target_properties(Eigen3::Eigen PROPERTIES INTERFACE_INCLUDE_DIRECTORIES \"${eigen_SOURCE_DIR}\")\n"
 "endif()\n"
 )
 
