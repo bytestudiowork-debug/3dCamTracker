@@ -87,7 +87,9 @@ jobs:
           cmake -S native/ceres-smoke -B "$RUNNER_TEMP/smoke-android" \
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_SDK_ROOT/ndk/27.0.12077973/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI="$ABI" -DANDROID_PLATFORM=android-26 \
-            -DANDROID_STL=c++_shared -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/ceres-install" \
+            -DANDROID_STL=c++_shared \
+            -DCeres_DIR="$RUNNER_TEMP/ceres-install/lib/cmake/Ceres" \
+            -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/ceres-install" \
             -DCMAKE_BUILD_TYPE=Release
           cmake --build "$RUNNER_TEMP/smoke-android" --parallel 2
           file "$RUNNER_TEMP/ceres-install/lib/libceres.so"
