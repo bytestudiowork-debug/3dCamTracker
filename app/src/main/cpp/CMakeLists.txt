@@ -19,6 +19,13 @@ set(LAPACK OFF CACHE BOOL "" FORCE)
 set(ACCELERATESPARSE OFF CACHE BOOL "" FORCE)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# Eigen is header-only for this build. Do not configure its documentation,
+# examples, or test targets: they attempt to execute host-style binaries
+# during an Android cross-compile.
+set(BUILD_TESTING OFF CACHE BOOL "Disable dependency tests" FORCE)
+set(EIGEN_BUILD_TESTING OFF CACHE BOOL "Disable Eigen tests" FORCE)
+set(EIGEN_BUILD_DOC OFF CACHE BOOL "Disable Eigen documentation and examples" FORCE)
+
 FetchContent_Declare(
         eigen
         GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
