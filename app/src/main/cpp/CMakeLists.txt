@@ -25,6 +25,9 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(BUILD_TESTING OFF CACHE BOOL "Disable dependency tests" FORCE)
 set(EIGEN_BUILD_TESTING OFF CACHE BOOL "Disable Eigen tests" FORCE)
 set(EIGEN_BUILD_DOC OFF CACHE BOOL "Disable Eigen documentation and examples" FORCE)
+set(EIGEN_BUILD_BLAS OFF CACHE BOOL "Disable Eigen BLAS library targets" FORCE)
+set(EIGEN_BUILD_LAPACK OFF CACHE BOOL "Disable Eigen LAPACK library targets" FORCE)
+set(EIGEN_BUILD_SPBENCH OFF CACHE BOOL "Disable Eigen sparse benchmark targets" FORCE)
 
 FetchContent_Declare(
         eigen
