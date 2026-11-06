@@ -42,6 +42,7 @@ internal class GlomapGlobalBundleAdjuster {
             .map { it.id }
             .distinct()
             .sorted()
+            .toList()
         if (frameIds.size < 3 || trackIds.size < 20) return null
 
         val frameIndex = frameIds.withIndex().associate { it.value to it.index }
