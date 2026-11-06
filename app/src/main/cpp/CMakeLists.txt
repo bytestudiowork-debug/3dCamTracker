@@ -37,23 +37,15 @@ endif()
 # Supply a minimal config package pointing at the fetched header tree.
 set(Eigen3_DIR "${CMAKE_BINARY_DIR}/eigen3-config" CACHE PATH "Eigen 3.4 package directory" FORCE)
 file(MAKE_DIRECTORY "${Eigen3_DIR}")
-file(WRITE "${Eigen3_DIR}/Eigen3Config.cmake"
-"set(Eigen3_FOUND TRUE)\\n"
-"set(Eigen3_VERSION 3.4.0)\\n"
-"set(Eigen3_INCLUDE_DIRS \"\${eigen_SOURCE_DIR}\")\\n"
-"if(NOT TARGET Eigen3::Eigen)\\n"
-"  add_library(Eigen3::Eigen INTERFACE IMPORTED)\\n"
-"  set_target_properties(Eigen3::Eigen PROPERTIES INTERFACE_INCLUDE_DIRECTORIES \"\${eigen_SOURCE_DIR}\")\\n"
-"endif()\\n"
+file(WRITE "\${Eigen3_DIR}/Eigen3Config.cmake"
+"set(Eigen3_FOUND TRUE)\n"
+"set(Eigen3_VERSION 3.4.0)\n"
+"set(Eigen3_INCLUDE_DIRS \"\${eigen_SOURCE_DIR}\")\n"
+"if(NOT TARGET Eigen3::Eigen)\n"
+"  add_library(Eigen3::Eigen INTERFACE IMPORTED)\n"
+"  set_target_properties(Eigen3::Eigen PROPERTIES INTERFACE_INCLUDE_DIRECTORIES \"\${eigen_SOURCE_DIR}\")\n"
+"endif()\n"
 )
-# Eigen's FetchContent build generates Eigen3Config.cmake in its binary
-# directory. Ceres uses find_package(Eigen3), so expose that exact package
-# location to the nested Ceres configure step.
-set(Eigen3_DIR "${eigen_BINARY_DIR}" CACHE PATH "Eigen 3.4 package directory" FORCE)
-list(PREPEND CMAKE_PREFIX_PATH "${eigen_BINARY_DIR}")
-if(NOT EXISTS "${Eigen3_DIR}/Eigen3Config.cmake")
-    message(FATAL_ERROR "Eigen3Config.cmake was not generated at ${Eigen3_DIR}")
-endif()
 
 # Eigen already defines an uninstall target; Ceres must not define it again
 # when both projects are configured in this Android build.
