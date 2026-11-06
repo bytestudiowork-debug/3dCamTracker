@@ -90,6 +90,7 @@ jobs:
             -DANDROID_STL=c++_shared \
             -DCeres_DIR="$RUNNER_TEMP/ceres-install/lib/cmake/Ceres" \
             -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/ceres-install" \
+            -DEigen3_DIR=/usr/share/eigen3/cmake \
             -DCMAKE_BUILD_TYPE=Release
           cmake --build "$RUNNER_TEMP/smoke-android" --parallel 2
           file "$RUNNER_TEMP/ceres-install/lib/libceres.so"
