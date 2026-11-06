@@ -136,17 +136,6 @@ fun ViewerScreen(
         }
 
         Column(Modifier.fillMaxSize()) {
-            if (!fullscreen) {
-                WorkspaceTopBar(
-                    projectName = projectName,
-                    compact = compactHeight,
-                    showTitle = windowWidth >= 600.dp,
-                    showPanelToggle = true,
-                    onTogglePanel = { panelOpen = !panelOpen },
-                    onCloseProject = onBack
-                )
-            }
-
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -161,33 +150,56 @@ fun ViewerScreen(
                         ),
                     horizontalArrangement = Arrangement.spacedBy(gap)
                 ) {
-                    ViewerPanel(
-                        bitmap = state.currentBitmap,
-                        trackingPoints = state.trackingPointsByFrame[state.playback.currentFrame].orEmpty(),
-                        verificationSegments = state.trackingVerificationByFrame[state.playback.currentFrame].orEmpty(),
-                        showVerificationOverlay = showVerificationOverlay,
-                        showTrackPointsOverlay = showTrackPointsOverlay,
-                        markerColorArgb = markerColorArgb,
-                        markerSizeDp = markerSizeDp,
-                        markerOutline = markerOutline,
-                        cubeColorArgb = cubeColorArgb,
-                        cubeRotationX = cubeRotationX,
-                        cubeRotationY = cubeRotationY,
-                        cubeRotationZ = cubeRotationZ,
-                        cubeScale = cubeScale,
-                        cubeSize = cubeSize,
-                        cubeLineWidth = cubeLineWidth,
-                        isLoading = state.isLoadingFrame,
-                        errorMessage = state.errorMessage,
-                        zoom = zoom,
-                        onZoomChanged = { zoom = it },
-                        compact = compactHeight,
-                        fullscreen = fullscreen,
-                        onToggleFullscreen = { fullscreen = !fullscreen },
+                    Column(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
-                    )
+                    ) {
+                        ViewerPanel(
+                            bitmap = state.currentBitmap,
+                            trackingPoints = state.trackingPointsByFrame[state.playback.currentFrame].orEmpty(),
+                            verificationSegments = state.trackingVerificationByFrame[state.playback.currentFrame].orEmpty(),
+                            showVerificationOverlay = showVerificationOverlay,
+                            showTrackPointsOverlay = showTrackPointsOverlay,
+                            markerColorArgb = markerColorArgb,
+                            markerSizeDp = markerSizeDp,
+                            markerOutline = markerOutline,
+                            cubeColorArgb = cubeColorArgb,
+                            cubeRotationX = cubeRotationX,
+                            cubeRotationY = cubeRotationY,
+                            cubeRotationZ = cubeRotationZ,
+                            cubeScale = cubeScale,
+                            cubeSize = cubeSize,
+                            cubeLineWidth = cubeLineWidth,
+                            isLoading = state.isLoadingFrame,
+                            errorMessage = state.errorMessage,
+                            zoom = zoom,
+                            onZoomChanged = { zoom = it },
+                            compact = compactHeight,
+                            fullscreen = fullscreen,
+                            onToggleFullscreen = { fullscreen = !fullscreen },
+                            modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth()
+                        )
+
+                        PlaybackPanel(
+                            state = state,
+                            poster = timelinePoster ?: state.currentBitmap,
+                            compact = compactHeight,
+                            isFullscreen = fullscreen,
+                            panelHeight = playbackHeight,
+                            onToggleFullscreen = { fullscreen = !fullscreen },
+                            onPlayPause = viewModel::playPause,
+                            onFirstFrame = viewModel::firstFrame,
+                            onLastFrame = viewModel::lastFrame,
+                            onSeek = viewModel::seekTo,
+                            onSpeedChanged = viewModel::setPlaybackSpeed,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = if (fullscreen) 0.dp else gap)
+                        )
+                    }
 
                     if (inlinePanel && panelOpen && !fullscreen) {
                         WorkspaceRightPanel(
@@ -245,22 +257,6 @@ fun ViewerScreen(
                 }
             }
 
-            PlaybackPanel(
-                state = state,
-                poster = timelinePoster ?: state.currentBitmap,
-                compact = compactHeight,
-                isFullscreen = fullscreen,
-                panelHeight = playbackHeight,
-                onToggleFullscreen = { fullscreen = !fullscreen },
-                onPlayPause = viewModel::playPause,
-                onFirstFrame = viewModel::firstFrame,
-                onLastFrame = viewModel::lastFrame,
-                onSeek = viewModel::seekTo,
-                onSpeedChanged = viewModel::setPlaybackSpeed,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(if (fullscreen) 0.dp else gap)
-            )
         }
 
         if (activeToolPopup != null) {
