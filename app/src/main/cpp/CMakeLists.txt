@@ -62,6 +62,8 @@ target_compile_options(trackstudio_native PRIVATE
         -O3
         -ffast-math
         -funroll-loops
+        -fno-exceptions
+        -fno-rtti
 )
 
 # Keep a configure-time guard against accidentally enabling a GPL sparse
