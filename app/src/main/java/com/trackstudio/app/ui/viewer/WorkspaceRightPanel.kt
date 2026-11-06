@@ -270,6 +270,22 @@ private fun TrackingToolsCard(
                 summary?.let { "${String.format(Locale.US, "%.2f", it.meanReprojectionErrorPx)} px" } ?: "—"
             )
             ProjectDetailRow("Initial pair", summary?.initialPairFrames?.let { "${it.first + 1} – ${it.second + 1}" } ?: "—")
+            ProjectDetailRow(
+                "GLOMAP global positioning",
+                summary?.let {
+                    if (it.globalPositioningApplied) "Applied · ${it.globalPositioningIterations} iterations"
+                    else it.globalPositioningStatus
+                } ?: "—"
+            )
+            ProjectDetailRow(
+                "Ceres cost",
+                summary?.takeIf {
+                    it.globalPositioningInitialCost.isFinite() &&
+                        it.globalPositioningFinalCost.isFinite()
+                }?.let {
+                    "${String.format(Locale.US, "%.3g", it.globalPositioningInitialCost)} → ${String.format(Locale.US, "%.3g", it.globalPositioningFinalCost)}"
+                } ?: "—"
+            )
         }
     }
 }
