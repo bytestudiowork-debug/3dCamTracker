@@ -35,7 +35,7 @@ import kotlin.math.sqrt
 class GlobalReconstructionEngine(
     private val maxFeatures: Int = 1600,
     private val ratioThreshold: Float = 0.78f,
-    private val maximumPairCount: Int = 600
+    private val maximumPairCount: Int = 420
 ) : ReconstructionEngine {
 
     internal data class FrameFeatures(

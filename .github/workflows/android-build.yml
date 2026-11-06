@@ -4,7 +4,7 @@ run-name: Fix remaining viewer compilation errors
 
 on:
   push:
-    branches: ["main", "master"]
+    branches: ["main", "master", "global-reconstruction-engine"]
   pull_request:
     branches: ["main", "master"]
   workflow_dispatch:

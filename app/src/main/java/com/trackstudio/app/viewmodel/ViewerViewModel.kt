@@ -173,7 +173,8 @@ class ViewerViewModel(
                 fps = safeFps,
                 speed = 1.0,
                 isPlaying = false
-            )
+            ),
+            reconstructionMode = _uiState.value.reconstructionMode
         )
 
         if (frameUris.isNotEmpty()) showFrame(0)
