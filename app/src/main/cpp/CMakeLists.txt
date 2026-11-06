@@ -42,6 +42,15 @@ file(WRITE "${Eigen3_DIR}/Eigen3Config.cmake"
 "  set_target_properties(Eigen3::Eigen PROPERTIES INTERFACE_INCLUDE_DIRECTORIES \"${eigen_SOURCE_DIR}\")\n"
 "endif()\n"
 )
+file(WRITE "${Eigen3_DIR}/Eigen3ConfigVersion.cmake"
+"set(PACKAGE_VERSION 3.4.0)\n"
+"if(PACKAGE_FIND_VERSION VERSION_LESS_EQUAL PACKAGE_VERSION)\n"
+"  set(PACKAGE_VERSION_COMPATIBLE TRUE)\n"
+"  if(PACKAGE_FIND_VERSION VERSION_EQUAL PACKAGE_VERSION)\n"
+"    set(PACKAGE_VERSION_EXACT TRUE)\n"
+"  endif()\n"
+"endif()\n"
+)
 
 # Avoid duplicate uninstall target creation between dependencies.
 set(PROVIDE_UNINSTALL_TARGET OFF CACHE BOOL "Do not add Ceres uninstall target" FORCE)
