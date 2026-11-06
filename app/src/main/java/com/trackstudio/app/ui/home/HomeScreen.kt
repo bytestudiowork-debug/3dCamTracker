@@ -14,6 +14,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.trackstudio.app.ui.common.DesktopButton
@@ -43,9 +47,14 @@ fun HomeScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "TRACKSTUDIO",
-                style = MaterialTheme.typography.titleLarge,
-                color = TextSecondary
+                text = buildAnnotatedString {
+                    append("Track")
+                    withStyle(SpanStyle(color = com.trackstudio.app.ui.theme.AccentPrimary)) {
+                        append("Studio")
+                    }
+                },
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = com.trackstudio.app.ui.theme.TextPrimary
             )
 
             Spacer(Modifier.height(24.dp))
