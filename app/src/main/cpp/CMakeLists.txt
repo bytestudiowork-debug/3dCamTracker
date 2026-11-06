@@ -94,4 +94,61 @@ target_compile_options(trackstudio_native PRIVATE
 # backend or silently falling back to a solver without EigenSparse support.
 if(SUITESPARSE OR NOT EIGENSPARSE)
     message(FATAL_ERROR "TrackStudio requires Ceres EigenSparse with SuiteSparse disabled")
+endif()file(WRITE "${Eigen3_DIR}/Eigen3Config.cmake"
+"set(Eigen3_FOUND TRUE)\\n"
+"set(Eigen3_VERSION 3.4.0)\\n"
+"set(Eigen3_INCLUDE_DIRS \"${eigen_SOURCE_DIR}\")\\n"
+"if(NOT TARGET Eigen3::Eigen)\\n"
+"  add_library(Eigen3::Eigen INTERFACE IMPORTED)\\n"
+"  set_target_properties(Eigen3::Eigen PROPERTIES INTERFACE_INCLUDE_DIRECTORIES \"${eigen_SOURCE_DIR}\")\\n"
+"endif()\\n"
+)
+
+# Eigen already defines an uninstall target; Ceres must not define it again
+# when both projects are configured in this Android build.
+set(PROVIDE_UNINSTALL_TARGET OFF CACHE BOOL "Do not add Ceres uninstall target" FORCE)
+
+FetchContent_Declare(
+        ceres
+        GIT_REPOSITORY https://ceres-solver.googlesource.com/ceres-solver
+        GIT_TAG 2.2.0
+        GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(ceres)
+
+if(NOT TARGET Ceres::ceres)
+    message(FATAL_ERROR "Ceres 2.2.0 did not export Ceres::ceres")
+endif()
+
+add_library(
+        trackstudio_native
+        SHARED
+        proxy_engine.cpp
+)
+
+target_include_directories(trackstudio_native PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
+find_library(log-lib log)
+find_library(jnigraphics-lib jnigraphics)
+
+target_link_libraries(
+        trackstudio_native
+        PRIVATE
+        Ceres::ceres
+        ${log-lib}
+        ${jnigraphics-lib}
+)
+
+target_compile_options(trackstudio_native PRIVATE
+        -O3
+        -ffast-math
+        -funroll-loops
+        -fno-exceptions
+        -fno-rtti
+)
+
+# Keep a configure-time guard against accidentally enabling a GPL sparse
+# backend or silently falling back to a solver without EigenSparse support.
+if(SUITESPARSE OR NOT EIGENSPARSE)
+    message(FATAL_ERROR "TrackStudio requires Ceres EigenSparse with SuiteSparse disabled")
 endif()
