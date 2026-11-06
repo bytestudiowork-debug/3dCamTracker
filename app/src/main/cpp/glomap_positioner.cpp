@@ -149,7 +149,10 @@ Java_com_trackstudio_app_tracking_glomap_GlomapNativeSolver_nativeSolve(
 
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::SPARSE_SCHUR;
-    options.preconditioner_type = ceres::CLUSTER_TRIDIAGONAL;
+    // SPARSE_SCHUR performs a direct sparse Schur solve; iterative-Schur
+    // preconditioners (including CLUSTER_TRIDIAGONAL) do not apply here.
+    // Keep the upstream objective, robust losses, gauge constraints and
+    // parameter ordering unchanged.
     options.max_num_iterations = std::min(max_iterations, 100);
     options.num_threads = num_threads;
     options.function_tolerance = 1e-5;
