@@ -36,9 +36,10 @@ fun HomeScreen(
         modifier = Modifier
             .fillMaxSize()
             .padding(32.dp),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.TopCenter
     ) {
         Column(
+            modifier = Modifier.padding(top = 40.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
