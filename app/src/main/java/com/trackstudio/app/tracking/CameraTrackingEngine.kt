@@ -90,5 +90,10 @@ data class CameraTrackingResult(
     val globalRotationsByFrame: Map<Int, DoubleArray> = emptyMap(),
     val viewGraphEdgeCount: Int = 0,
     val viewGraphAcceptedEdgeCount: Int = 0,
-    val globalRotationIterations: Int = 0
+    val globalRotationIterations: Int = 0,
+    val globalPositioningApplied: Boolean = false,
+    val globalPositioningInitialCost: Double = Double.NaN,
+    val globalPositioningFinalCost: Double = Double.NaN,
+    val globalPositioningIterations: Int = 0,
+    val globalPositioningStatus: String = "Not run"
 )
