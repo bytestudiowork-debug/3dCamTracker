@@ -79,16 +79,17 @@ internal fun TrackingToolPopup(
     onDismiss: () -> Unit
 ) {
     var dragOffset by remember(title) { mutableStateOf(Offset.Zero) }
+    var activeSlider by remember(title) { mutableStateOf<String?>(null) }
 
     Box(
-        Modifier.fillMaxSize().background(Color(0x99000000)).clickable(onClick = onDismiss),
+        Modifier.fillMaxSize().background(if (activeSlider == null) Color(0x99000000) else Color.Transparent).clickable(onClick = onDismiss),
         contentAlignment = Alignment.Center
     ) {
         Column(
             Modifier.offset { IntOffset(dragOffset.x.roundToInt(), dragOffset.y.roundToInt()) }
                 .fillMaxWidth(0.88f)
                 .clip(RoundedCornerShape(14.dp))
-                .background(PanelBackground)
+                .background(if (activeSlider == null) PanelBackground else Color.Transparent)
         ) {
             Row(
                 Modifier.fillMaxWidth().height(52.dp).background(PanelSurfaceRaised)
@@ -141,7 +142,7 @@ internal fun TrackingToolPopup(
                         Text("Marker size", color = TextPrimary, fontSize = 13.sp, modifier = Modifier.weight(1f))
                         Text("${String.format("%.1f", markerSizeDp)} dp", color = AccentPrimary, fontSize = 12.sp)
                     }
-                    Slider(value = markerSizeDp.coerceIn(2f, 5.5f), onValueChange = onMarkerSizeChanged, valueRange = 2f..5.5f)
+                    Slider(value = markerSizeDp.coerceIn(2f, 5.5f), onValueChange = { activeSlider = "Marker size"; onMarkerSizeChanged(it) }, onValueChangeFinished = { activeSlider = null }, valueRange = 2f..5.5f)
                     PopupSwitch("Dark outline", markerOutline, onMarkerOutlineChanged)
                     PopupMetric("Frame", "$currentFrame / $frameCount")
                     PopupMetric("Tracked observations on frame", trackPointCount.toString())
@@ -173,7 +174,7 @@ private fun CubeAngleSlider(label: String, value: Float, onChange: (Float) -> Un
         Text(label, color = TextPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f))
         Text("${value.toInt()}°", color = AccentPrimary, fontSize = 11.sp)
     }
-    Slider(value = value.coerceIn(0f, 360f), onValueChange = onChange, valueRange = 0f..360f)
+    Slider(value = value.coerceIn(0f, 360f), onValueChange = { onChange(it) }, valueRange = 0f..360f)
 }
 
 @Composable
