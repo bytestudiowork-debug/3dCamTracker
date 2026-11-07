@@ -243,6 +243,10 @@ class ViewerViewModel(
         if (_uiState.value.isAutoTracking) return
         val useOriginals = _uiState.value.reconstructionMode == ReconstructionMode.GLOBAL
         val videoUri = sourceVideoUri
+        if (videoUri != null && !useOriginals) {
+            _uiState.update { it.copy(trackingError = "Direct video tracking currently uses the Global engine. Import an image sequence to use Custom Tracker.") }
+            return
+        }
         if (videoUri == null && useOriginals && trackingFrameUris.size != frameUris.size) {
             _uiState.update { it.copy(trackingError = "Original source frames are unavailable for Global reconstruction. Reopen or relink the project footage.") }
             return
@@ -448,7 +452,7 @@ class ViewerViewModel(
     }
 
     private suspend fun presentFrameForPlayback(index: Int) {
-        if (index !in frameUris.indices) return
+        if (index !in 0 until _uiState.value.playback.frameCount) return
 
         requestJob?.cancel()
         requestJob = null
@@ -577,7 +581,7 @@ class ViewerViewModel(
     }
 
     private fun warm(index: Int) {
-        if (index !in frameUris.indices) return
+        if (index !in 0 until _uiState.value.playback.frameCount) return
         if (bitmapCache.get(index) == null && inFlight[index] == null) launchDecode(index)
     }
 
