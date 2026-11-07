@@ -184,6 +184,8 @@ class ViewerViewModel(
             speed = 1.0
         )
 
+        val initialMode = if (videoUri != null) ReconstructionMode.GLOBAL else _uiState.value.reconstructionMode
+        reconstructionEngine = if (initialMode == ReconstructionMode.GLOBAL) GlobalReconstructionEngine() else customEngine
         _uiState.value = ViewerUiState(
             playback = PlaybackState(
                 currentFrame = 0,
@@ -192,7 +194,7 @@ class ViewerViewModel(
                 speed = 1.0,
                 isPlaying = false
             ),
-            reconstructionMode = _uiState.value.reconstructionMode
+            reconstructionMode = initialMode
         )
 
         if (frameUris.isNotEmpty() || videoUri != null) showFrame(0)
