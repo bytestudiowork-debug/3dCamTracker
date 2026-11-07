@@ -31,6 +31,13 @@ fun FootagePanel(
     onEvent: (NewProjectEvent) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val videoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { videoUri ->
+        videoUri ?: return@rememberLauncherForActivityResult
+        onEvent(NewProjectEvent.VideoSelected(videoUri))
+    }
+
     val folderPicker =
         rememberLauncherForActivityResult(
             contract =
@@ -52,9 +59,9 @@ fun FootagePanel(
     ) {
 
         Text(
-            "Select the folder containing the image sequence. "
-                    + "The app will automatically find, sort and inspect "
-                    + "all supported image frames.",
+            "Import a video directly or select a folder containing an image sequence. "
+                    + "Video frames are decoded into project storage; optional playback "
+                    + "proxies are generated as a separate stage.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary
         )
@@ -65,27 +72,36 @@ fun FootagePanel(
 
         DesktopButton(
             text = when (state.importPhase) {
-                ImportPhase.IDLE,
-                ImportPhase.FAILED ->
-                    "Select Frames Folder..."
-
-                ImportPhase.PROBING ->
-                    "Reading Frames..."
-
-                ImportPhase.PROBED ->
-                    "Replace Frames Folder..."
+                ImportPhase.IDLE, ImportPhase.FAILED -> "Select Frames Folder..."
+                ImportPhase.PROBING -> "Reading Frames..."
+                ImportPhase.EXTRACTING_VIDEO -> "Extracting Video Frames..."
+                ImportPhase.PROBED -> "Replace Frames Folder..."
             },
-            enabled =
-                state.importPhase != ImportPhase.PROBING,
-            onClick = {
-                folderPicker.launch(null)
-            }
+            enabled = state.importPhase != ImportPhase.PROBING &&
+                state.importPhase != ImportPhase.EXTRACTING_VIDEO,
+            onClick = { folderPicker.launch(null) }
         )
+        Spacer(Modifier.height(8.dp))
+        DesktopButton(
+            text = "Import Video...",
+            enabled = state.importPhase != ImportPhase.PROBING &&
+                state.importPhase != ImportPhase.EXTRACTING_VIDEO,
+            onClick = { videoPicker.launch(arrayOf("video/*")) }
+        )
+        if (state.importPhase == ImportPhase.PROBING ||
+            state.importPhase == ImportPhase.EXTRACTING_VIDEO) {
+            DesktopButton(text = "Cancel Import", onClick = {
+                onEvent(NewProjectEvent.CancelImport)
+            })
+        }
 
         when (state.importPhase) {
 
             ImportPhase.PROBING ->
                 ProbingProgress(state)
+
+            ImportPhase.EXTRACTING_VIDEO ->
+                ExtractionProgress(state)
 
             ImportPhase.PROBED ->
                 FootageSummary(state)
@@ -103,6 +119,26 @@ fun FootagePanel(
 
             ImportPhase.IDLE ->
                 Unit
+        }
+    }
+}
+
+@Composable
+private fun ExtractionProgress(state: NewProjectUiState) {
+    val (done, total) = state.extractionProgress
+    Column(Modifier.padding(top = 14.dp)) {
+        LinearProgressIndicator(
+            progress = { if (total <= 0) 0f else (done.toFloat() / total).coerceIn(0f, 1f) },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Text(
+            if (total > 0) "Decoded $done / $total frames" else "Preparing video decoder...",
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextSecondary,
+            modifier = Modifier.padding(top = 6.dp)
+        )
+        if (state.extractionCurrentName.isNotBlank()) {
+            Text(state.extractionCurrentName, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
         }
     }
 }

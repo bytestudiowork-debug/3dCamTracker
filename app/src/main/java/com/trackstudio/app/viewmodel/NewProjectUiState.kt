@@ -8,6 +8,7 @@ import com.trackstudio.app.data.model.ProxySettings
 enum class ImportPhase {
     IDLE,
     PROBING,
+    EXTRACTING_VIDEO,
     PROBED,
     FAILED
 }
@@ -28,6 +29,8 @@ data class NewProjectUiState(
 
     val probingProgress: Pair<Int, Int> = 0 to 0,
     val probingCurrentName: String = "",
+    val extractionProgress: Pair<Int, Int> = 0 to 0,
+    val extractionCurrentName: String = "",
 
     val footage: FootageInfo = FootageInfo.EMPTY,
     val importError: String? = null,
@@ -63,6 +66,9 @@ sealed class NewProjectEvent {
     data class FramesFolderSelected(
         val folderUri: android.net.Uri
     ) : NewProjectEvent()
+
+    data class VideoSelected(val videoUri: android.net.Uri) : NewProjectEvent()
+    object CancelImport : NewProjectEvent()
 
     data class ProxyEnabledChanged(
         val enabled: Boolean

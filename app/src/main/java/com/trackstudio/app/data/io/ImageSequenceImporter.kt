@@ -31,21 +31,6 @@ sealed class ImportProgress {
     ) : ImportProgress()
 }
 
-sealed class ProxyProgress {
-    data class Generating(
-        val done: Int,
-        val total: Int
-    ) : ProxyProgress()
-
-    data class Done(
-        val outputDir: File
-    ) : ProxyProgress()
-
-    data class Failed(
-        val reason: String
-    ) : ProxyProgress()
-}
-
 class ImageSequenceImporter(
     private val contentResolver: ContentResolver,
     private val proxyEngine: ProxyEngine = ProxyEngine()
@@ -217,6 +202,15 @@ class ImageSequenceImporter(
      * one frame at a time, during probing/proxy generation.
      */
     private fun scanFolder(folderUri: Uri): List<FolderImage> {
+        if (folderUri.scheme == "file") {
+            val directory = File(folderUri.path ?: return emptyList())
+            return directory.listFiles()
+                ?.asSequence()
+                ?.filter { it.isFile && it.extension.lowercase() in supportedExtensions }
+                ?.map { FolderImage(Uri.fromFile(it), it.name, it.length()) }
+                ?.toList()
+                ?: emptyList()
+        }
 
         val documentId =
             DocumentsContract.getTreeDocumentId(folderUri)
@@ -316,70 +310,4 @@ class ImageSequenceImporter(
         return results
     }
 
-    /**
-     * Generates one proxy JPEG per frame.
-     *
-     * Source frame bytes are deliberately not cached from the probe pass.
-     */
-    fun generateProxies(
-        footage: FootageInfo,
-        scale: Float,
-        jpegQuality: Int,
-        outputDir: File
-    ): Flow<ProxyProgress> = flow {
-
-        if (!outputDir.exists()) {
-            outputDir.mkdirs()
-        }
-
-        footage.frames.forEachIndexed { index, frame ->
-
-            emit(
-                ProxyProgress.Generating(
-                    done = index,
-                    total = footage.frames.size
-                )
-            )
-
-            val bytes = try {
-                contentResolver.openInputStream(frame.uri)?.use {
-                    it.readBytes()
-                }
-            } catch (t: Throwable) {
-                Logger.e(
-                    "Proxy source read failed for ${frame.displayName}",
-                    t
-                )
-                null
-            }
-
-            if (bytes == null) {
-                return@forEachIndexed
-            }
-
-            val dstFile = File(
-                outputDir,
-                "proxy_%05d.jpg".format(frame.index)
-            )
-
-            val ok = proxyEngine.nativeGenerateProxy(
-                bytes,
-                dstFile.absolutePath,
-                scale,
-                jpegQuality
-            )
-
-            if (!ok) {
-                Logger.e(
-                    "Proxy generation failed for ${frame.displayName}"
-                )
-            }
-
-            yield()
-        }
-
-        emit(
-            ProxyProgress.Done(outputDir)
-        )
-    }.flowOn(Dispatchers.IO)
 }

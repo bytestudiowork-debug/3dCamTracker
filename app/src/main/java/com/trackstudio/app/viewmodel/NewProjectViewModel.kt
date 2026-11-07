@@ -7,11 +7,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.trackstudio.app.data.io.ImageSequenceImporter
 import com.trackstudio.app.data.io.ImportProgress
+import com.trackstudio.app.data.io.ProxyGenerator
 import com.trackstudio.app.data.io.ProxyProgress
+import com.trackstudio.app.data.io.VideoFrameExtractor
+import com.trackstudio.app.data.io.VideoExtractionProgress
 import com.trackstudio.app.data.model.ProjectSettings
 import com.trackstudio.app.data.repository.ProjectRepository
 import com.trackstudio.app.util.FileUtils
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,6 +26,8 @@ import java.util.UUID
 class NewProjectViewModel(
     private val appContext: Context,
     private val importer: ImageSequenceImporter,
+    private val videoExtractor: VideoFrameExtractor,
+    private val proxyGenerator: ProxyGenerator,
     private val repository: ProjectRepository
 ) : ViewModel() {
 
@@ -41,6 +47,7 @@ class NewProjectViewModel(
      * the imported sequence, while this URI identifies its source.
      */
     private var selectedFolderUri: Uri? = null
+    private var importJob: Job? = null
 
     /**
      * Completed project configuration.
@@ -66,6 +73,12 @@ class NewProjectViewModel(
 
             is NewProjectEvent.FramesFolderSelected ->
                 importFramesFolder(event.folderUri)
+
+            is NewProjectEvent.VideoSelected ->
+                importVideo(event.videoUri)
+
+            NewProjectEvent.CancelImport ->
+                cancelImport()
 
             is NewProjectEvent.ProxyEnabledChanged ->
                 _uiState.update {
@@ -131,77 +144,88 @@ class NewProjectViewModel(
     }
 
     private fun importFramesFolder(folderUri: Uri) {
-
-        /**
-         * Keep permission after the app restarts.
-         */
+        importJob?.cancel()
         takePersistableReadPermission(folderUri)
-
-        selectedFolderUri = folderUri
-
         _uiState.update {
-            it.copy(
-                importPhase = ImportPhase.PROBING,
-                importError = null,
-                probingProgress = 0 to 0,
-                probingCurrentName = ""
-            )
+            it.copy(importPhase = ImportPhase.PROBING, importError = null,
+                probingProgress = 0 to 0, probingCurrentName = "")
         }
+        importJob = viewModelScope.launch { probeFolder(folderUri) }
+    }
 
-        viewModelScope.launch {
+    private fun importVideo(videoUri: Uri) {
+        importJob?.cancel()
+        takePersistableReadPermission(videoUri)
+        _uiState.update {
+            it.copy(importPhase = ImportPhase.EXTRACTING_VIDEO, importError = null,
+                extractionProgress = 0 to 0, extractionCurrentName = "")
+        }
+        importJob = viewModelScope.launch {
+            val sourceFramesDir = FileUtils.proxyDir(
+                appContext, pendingProjectId,
+                "source_frames_${UUID.randomUUID().toString().take(8)}"
+            )
+            videoExtractor.extract(videoUri, sourceFramesDir).collect { progress ->
+                when (progress) {
+                    is VideoExtractionProgress.Started ->
+                        _uiState.update {
+                            it.copy(extractionProgress = 0 to progress.estimatedFrames,
+                                frameRate = progress.frameRate)
+                        }
+                    is VideoExtractionProgress.FrameWritten ->
+                        _uiState.update {
+                            it.copy(extractionProgress = progress.done to progress.total,
+                                extractionCurrentName = progress.name)
+                        }
+                    is VideoExtractionProgress.Done -> {
+                        val framesUri = Uri.fromFile(progress.outputDir)
+                        _uiState.update {
+                            it.copy(importPhase = ImportPhase.PROBING,
+                                probingProgress = 0 to progress.frameCount,
+                                probingCurrentName = "Validating decoded frames...")
+                        }
+                        probeFolder(framesUri)
+                    }
+                    is VideoExtractionProgress.Failed ->
+                        _uiState.update {
+                            it.copy(importPhase = ImportPhase.FAILED, importError = progress.reason)
+                        }
+                }
+            }
+        }
+    }
 
-            importer.probeFolder(folderUri)
-                .collect { progress ->
-
-                    when (progress) {
-
-                        is ImportProgress.Probing ->
-                            _uiState.update {
-                                it.copy(
-                                    probingProgress =
-                                        progress.done to progress.total,
-
-                                    probingCurrentName =
-                                        progress.currentName
-                                )
-                            }
-
-                        is ImportProgress.Done ->
-                            _uiState.update {
-
-                                val suggestProxy =
-                                    progress
-                                        .footage
-                                        .requiresProxyByDefault
-
-                                it.copy(
-                                    importPhase =
-                                        ImportPhase.PROBED,
-
-                                    footage =
-                                        progress.footage,
-
-                                    proxySettings =
-                                        it.proxySettings.copy(
-                                            enabled =
-                                                suggestProxy ||
-                                                    it.proxySettings.enabled
-                                        )
-                                )
-                            }
-
-                        is ImportProgress.Failed ->
-                            _uiState.update {
-                                it.copy(
-                                    importPhase =
-                                        ImportPhase.FAILED,
-
-                                    importError =
-                                        progress.reason
-                                )
-                            }
+    private suspend fun probeFolder(folderUri: Uri) {
+        importer.probeFolder(folderUri).collect { progress ->
+            when (progress) {
+                is ImportProgress.Probing ->
+                    _uiState.update {
+                        it.copy(probingProgress = progress.done to progress.total,
+                            probingCurrentName = progress.currentName)
+                    }
+                is ImportProgress.Done -> {
+                    selectedFolderUri = folderUri
+                    val suggestProxy = progress.footage.requiresProxyByDefault
+                    _uiState.update {
+                        it.copy(importPhase = ImportPhase.PROBED, footage = progress.footage,
+                            proxySettings = it.proxySettings.copy(
+                                enabled = suggestProxy || it.proxySettings.enabled))
                     }
                 }
+                is ImportProgress.Failed ->
+                    _uiState.update {
+                        it.copy(importPhase = ImportPhase.FAILED, importError = progress.reason)
+                    }
+            }
+        }
+    }
+
+    private fun cancelImport() {
+        importJob?.cancel()
+        importJob = null
+        _uiState.update {
+            it.copy(importPhase = if (it.footage.frameCount > 0) ImportPhase.PROBED else ImportPhase.IDLE,
+                importError = null, extractionCurrentName = "", probingCurrentName = "")
         }
     }
 
@@ -305,10 +329,10 @@ class NewProjectViewModel(
                 )
 
             try {
-                importer.generateProxies(
-                footage = settings.footage,
-                scale = settings.proxy.resolution.scale,
-                jpegQuality = settings.proxy.jpegQuality,
+                proxyGenerator.generate(
+                    footage = settings.footage,
+                    scale = settings.proxy.resolution.scale,
+                    jpegQuality = settings.proxy.jpegQuality,
                     outputDir = outputDir
                 ).collect { progress ->
 
@@ -384,11 +408,9 @@ class NewProjectViewModel(
             return NewProjectViewModel(
                 appContext = appContext,
 
-                importer =
-                    ImageSequenceImporter(
-                        resolver
-                    ),
-
+                importer = ImageSequenceImporter(resolver),
+                videoExtractor = VideoFrameExtractor(appContext),
+                proxyGenerator = ProxyGenerator(resolver),
                 repository =
                     ProjectRepository(
                         appContext

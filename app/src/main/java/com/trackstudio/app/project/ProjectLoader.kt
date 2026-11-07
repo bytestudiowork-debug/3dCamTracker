@@ -65,7 +65,7 @@ class ProjectLoader(
                 settings.sourceFolderUri
             )
 
-        if (!hasPersistedReadPermission(folderUri)) {
+        if (folderUri.scheme != "file" && !hasPersistedReadPermission(folderUri)) {
             emit(
                 ProjectLoadResult.Failed(
                     "Source folder permission is unavailable. " +
