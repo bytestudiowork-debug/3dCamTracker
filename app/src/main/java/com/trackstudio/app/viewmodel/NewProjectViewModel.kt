@@ -285,9 +285,14 @@ class NewProjectViewModel(
                     CreationPhase.GENERATING_PROXIES,
 
                 creationProgress =
-                    0 to state.footage.frameCount
+                    0 to state.footage.frameCount,
+                proxyWarning = null
             )
         }
+
+        // Persist the project before starting the optional proxy stage.
+        // A proxy failure must never discard the imported original footage.
+        repository.saveProjectMetadata(settings)
 
         viewModelScope.launch {
 
@@ -333,16 +338,18 @@ class NewProjectViewModel(
                         }
                     }
 
-                    is ProxyProgress.Failed ->
+                    is ProxyProgress.Failed -> {
+                        // Proxy generation is an optional playback optimization.
+                        // Keep the original footage usable and let ViewerFrames fall back to it.
+                        repository.saveProjectMetadata(settings)
+                        completedProjectSettings = settings
                         _uiState.update {
                             it.copy(
-                                creationPhase =
-                                    CreationPhase.FAILED,
-
-                                importError =
-                                    progress.reason
+                                creationPhase = CreationPhase.DONE,
+                                proxyWarning = "Project created. Proxy generation failed; original footage will be used. ${progress.reason}"
                             )
                         }
+                    }
                 }
             }
         }
