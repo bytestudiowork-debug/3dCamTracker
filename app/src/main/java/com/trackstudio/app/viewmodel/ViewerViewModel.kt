@@ -19,6 +19,8 @@ import com.trackstudio.app.tracking.CameraTrackingProgress
 import com.trackstudio.app.tracking.TrackingVerificationProjector
 import com.trackstudio.app.tracking.TrackingVerificationSegment
 import com.trackstudio.app.tracking.OpenCvRuntime
+import com.trackstudio.app.data.io.VideoPreviewDecoder
+import com.trackstudio.app.data.io.SequentialVideoFrameDecoder
 import kotlinx.coroutines.withContext
 import org.opencv.android.Utils
 import org.opencv.core.CvType
@@ -91,6 +93,12 @@ class ViewerViewModel(
 
     private var frameUris: List<Uri> = emptyList()
     private var trackingFrameUris: List<Uri> = emptyList()
+    private var sourceVideoUri: Uri? = null
+    private var sourceVideoFrameCount: Int = 0
+    private var sourceVideoRotation: Int = 0
+    private var sourceVideoWidth: Int = 0
+    private var sourceVideoHeight: Int = 0
+    private var videoPreviewDecoder: VideoPreviewDecoder? = null
 
     private val maxHeapMb =
         Runtime.getRuntime().maxMemory() / (1024L * 1024L)
@@ -141,7 +149,7 @@ class ViewerViewModel(
             }
         )
 
-    fun loadSequence(uris: List<Uri>, fps: Double, sourceUris: List<Uri> = uris) {
+    fun loadSequence(uris: List<Uri>, fps: Double, sourceUris: List<Uri> = uris, videoUri: Uri? = null, videoFrameCount: Int = uris.size, sourceWidth: Int = 0, sourceHeight: Int = 0, videoRotationDegrees: Int = 0) {
         trackingJob?.cancel()
         trackingJob = null
         requestJob?.cancel()
@@ -152,6 +160,14 @@ class ViewerViewModel(
         inFlight.clear()
 
         sequenceGeneration++
+        videoPreviewDecoder?.close()
+        videoPreviewDecoder = null
+        sourceVideoUri = videoUri
+        sourceVideoFrameCount = if (videoUri != null) videoFrameCount else 0
+        sourceVideoRotation = videoRotationDegrees
+        sourceVideoWidth = sourceWidth
+        sourceVideoHeight = sourceHeight
+        if (videoUri != null) videoPreviewDecoder = VideoPreviewDecoder(appContext, videoUri, videoRotationDegrees)
         frameUris = uris.toList()
         trackingFrameUris = sourceUris.toList()
         bitmapCache.evictAll()
@@ -162,7 +178,7 @@ class ViewerViewModel(
         val safeFps = fps.coerceIn(1.0, 240.0)
 
         playbackController.configure(
-            frameCount = frameUris.size,
+            frameCount = if (videoUri != null) videoFrameCount else frameUris.size,
             fps = safeFps,
             currentFrame = 0,
             speed = 1.0
@@ -171,7 +187,7 @@ class ViewerViewModel(
         _uiState.value = ViewerUiState(
             playback = PlaybackState(
                 currentFrame = 0,
-                frameCount = frameUris.size,
+                frameCount = if (videoUri != null) videoFrameCount else frameUris.size,
                 fps = safeFps,
                 speed = 1.0,
                 isPlaying = false
@@ -179,7 +195,7 @@ class ViewerViewModel(
             reconstructionMode = _uiState.value.reconstructionMode
         )
 
-        if (frameUris.isNotEmpty()) showFrame(0)
+        if (frameUris.isNotEmpty() || videoUri != null) showFrame(0)
     }
 
     fun playPause() {
@@ -381,7 +397,7 @@ class ViewerViewModel(
     }
 
     private fun showFrame(index: Int) {
-        if (index !in frameUris.indices) return
+        if (index !in 0 until _uiState.value.playback.frameCount) return
 
         wantedCenter = index
         requestJob?.cancel()
