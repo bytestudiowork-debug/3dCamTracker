@@ -22,6 +22,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -32,6 +33,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.trackstudio.app.data.model.ProjectSettings
@@ -64,6 +70,18 @@ fun NewProjectScreen(
     onProjectCreated: (ProjectSettings) -> Unit
 ) {
     val state by viewModel.uiState.collectAsState()
+    val dialogView = LocalView.current
+
+    SideEffect {
+        val dialogWindow = (dialogView.parent as? DialogWindowProvider)?.window
+        if (dialogWindow != null) {
+            WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
+            WindowInsetsControllerCompat(dialogWindow, dialogWindow.decorView).apply {
+                systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                hide(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
 
     var selectedTab by remember {
         mutableStateOf(SettingsTab.FOOTAGE)
