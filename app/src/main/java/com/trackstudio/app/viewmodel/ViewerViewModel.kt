@@ -502,11 +502,17 @@ class ViewerViewModel(
                     throw CancellationException("Frame $index no longer needed")
                 }
 
-                decodeSampled(
-                    uri = uris[index],
-                    maxDimension = maxDecodeDimension,
-                    config = Bitmap.Config.ARGB_8888
-                )
+                if (sourceVideoUri != null) {
+                    requireNotNull(videoPreviewDecoder).frameAt(
+                        index, _uiState.value.playback.fps, maxDecodeDimension
+                    )
+                } else {
+                    decodeSampled(
+                        uri = uris[index],
+                        maxDimension = maxDecodeDimension,
+                        config = Bitmap.Config.ARGB_8888
+                    )
+                }
             }
 
             if (frameBytes == 0) frameBytes = bitmap.byteCount
@@ -635,6 +641,8 @@ class ViewerViewModel(
         inFlight.values.forEach { it.cancel() }
         inFlight.clear()
         bitmapCache.evictAll()
+        videoPreviewDecoder?.close()
+        videoPreviewDecoder = null
         super.onCleared()
     }
 
