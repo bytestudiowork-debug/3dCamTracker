@@ -445,6 +445,9 @@ private fun TrackStudioApp() {
                         }
 
                     ViewerScreen(
+                        videoUri = project.sourceVideoUri.takeIf { it.isNotBlank() }?.let(android.net.Uri::parse),
+                        videoFrameCount = project.footage.frameCount,
+                        videoRotationDegrees = project.videoRotationDegrees,
 
                         viewModel =
                             viewerViewModel,
