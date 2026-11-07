@@ -110,6 +110,16 @@ internal fun TrackingToolPopup(
                     modifier = Modifier.size(22.dp).clickable(onClick = onDismiss)
                 )
             }
+            if (activeSlider != null) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(activeSlider!!, color = TextPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextSecondary,
+                        modifier = Modifier.size(22.dp).clickable(onClick = onDismiss))
+                }
+            }
             Column(
                 Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
