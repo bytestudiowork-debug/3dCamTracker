@@ -332,6 +332,15 @@ private fun BottomBar(
                 .padding(14.dp)
     ) {
 
+        if (state.proxyWarning != null) {
+            Text(
+                text = state.proxyWarning!!,
+                color = TextSecondary,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
+
         if (
             state.creationPhase ==
             CreationPhase.GENERATING_PROXIES
