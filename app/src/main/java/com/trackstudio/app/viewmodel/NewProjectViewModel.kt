@@ -11,6 +11,7 @@ import com.trackstudio.app.data.io.ProxyProgress
 import com.trackstudio.app.data.model.ProjectSettings
 import com.trackstudio.app.data.repository.ProjectRepository
 import com.trackstudio.app.util.FileUtils
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -303,12 +304,13 @@ class NewProjectViewModel(
                     subdir = settings.proxy.cacheSubdir
                 )
 
-            importer.generateProxies(
+            try {
+                importer.generateProxies(
                 footage = settings.footage,
                 scale = settings.proxy.resolution.scale,
                 jpegQuality = settings.proxy.jpegQuality,
-                outputDir = outputDir
-            ).collect { progress ->
+                    outputDir = outputDir
+                ).collect { progress ->
 
                 when (progress) {
 
@@ -350,6 +352,18 @@ class NewProjectViewModel(
                             )
                         }
                     }
+                }
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                repository.saveProjectMetadata(settings)
+                completedProjectSettings = settings
+                _uiState.update {
+                    it.copy(
+                        creationPhase = CreationPhase.DONE,
+                        proxyWarning = "Project created. Proxy generation stopped; original footage will be used. ${error.message ?: "Unknown proxy error"}"
+                    )
                 }
             }
         }
