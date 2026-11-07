@@ -60,8 +60,8 @@ fun FootagePanel(
 
         Text(
             "Import a video directly or select a folder containing an image sequence. "
-                    + "Video frames are decoded into project storage; optional playback "
-                    + "proxies are generated as a separate stage.",
+                    + "Videos stay in their original format; frames decode as needed "
+                    + "for preview and full-resolution tracking.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary
         )
@@ -74,7 +74,7 @@ fun FootagePanel(
             text = when (state.importPhase) {
                 ImportPhase.IDLE, ImportPhase.FAILED -> "Select Frames Folder..."
                 ImportPhase.PROBING -> "Reading Frames..."
-                ImportPhase.EXTRACTING_VIDEO -> "Extracting Video Frames..."
+                ImportPhase.EXTRACTING_VIDEO -> "Reading Video..."
                 ImportPhase.PROBED -> "Replace Frames Folder..."
             },
             enabled = state.importPhase != ImportPhase.PROBING &&
