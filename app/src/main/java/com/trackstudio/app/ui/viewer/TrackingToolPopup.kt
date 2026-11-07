@@ -91,7 +91,7 @@ internal fun TrackingToolPopup(
                 .clip(RoundedCornerShape(14.dp))
                 .background(if (activeSlider == null) PanelBackground else Color.Transparent)
         ) {
-            Row(
+            if (activeSlider == null) Row(
                 Modifier.fillMaxWidth().height(52.dp).background(PanelSurfaceRaised)
                     .pointerInput(title) {
                         detectDragGestures { change, amount ->
@@ -115,38 +115,42 @@ internal fun TrackingToolPopup(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (title == "3D Test") {
-                    PopupSwitch("Show diagnostic cube", showCube, onCubeChanged)
-                    Text("Cube colour", color = TextPrimary, fontSize = 13.sp)
-                    CubeColourSelector(cubeColorArgb, onCubeColorChanged)
-                    CubeAngleSlider("Rotation X", cubeRotationX, onCubeRotationXChanged)
-                    CubeAngleSlider("Rotation Y", cubeRotationY, onCubeRotationYChanged)
-                    CubeAngleSlider("Rotation Z", cubeRotationZ, onCubeRotationZChanged)
-                    CubeValueSlider("Scale", cubeScale, 0.25f..3f, onCubeScaleChanged, "%.2fx")
-                    CubeValueSlider("Size", cubeSize, 0.5f..2f, onCubeSizeChanged, "%.2fx")
-                    CubeValueSlider("Line thickness", cubeLineWidth, 1f..5f, onCubeLineWidthChanged, "%.1f dp")
-                    PopupMetric("Projected wireframe lines", verificationLineCount.toString())
-                    androidx.compose.material3.TextButton(onClick = {
+                    if (activeSlider == null) PopupSwitch("Show diagnostic cube", showCube, onCubeChanged)
+                    if (activeSlider == null) {
+                        Text("Cube colour", color = TextPrimary, fontSize = 13.sp)
+                        CubeColourSelector(cubeColorArgb, onCubeColorChanged)
+                    }
+                    if (activeSlider == null || activeSlider == "Rotation X") CubeAngleSlider("Rotation X", cubeRotationX, onCubeRotationXChanged, { activeSlider = it })
+                    if (activeSlider == null || activeSlider == "Rotation Y") CubeAngleSlider("Rotation Y", cubeRotationY, onCubeRotationYChanged, { activeSlider = it })
+                    if (activeSlider == null || activeSlider == "Rotation Z") CubeAngleSlider("Rotation Z", cubeRotationZ, onCubeRotationZChanged, { activeSlider = it })
+                    if (activeSlider == null || activeSlider == "Scale") CubeValueSlider("Scale", cubeScale, 0.25f..3f, onCubeScaleChanged, "%.2fx", { activeSlider = it })
+                    if (activeSlider == null || activeSlider == "Size") CubeValueSlider("Size", cubeSize, 0.5f..2f, onCubeSizeChanged, "%.2fx", { activeSlider = it })
+                    if (activeSlider == null || activeSlider == "Line thickness") CubeValueSlider("Line thickness", cubeLineWidth, 1f..5f, onCubeLineWidthChanged, "%.1f dp", { activeSlider = it })
+                    if (activeSlider == null) PopupMetric("Projected wireframe lines", verificationLineCount.toString())
+                    if (activeSlider == null) androidx.compose.material3.TextButton(onClick = {
                         onCubeColorChanged(0xFF00E5FF.toInt())
                         onCubeRotationXChanged(0f); onCubeRotationYChanged(0f); onCubeRotationZChanged(0f)
                         onCubeScaleChanged(1f); onCubeSizeChanged(1f); onCubeLineWidthChanged(1.8f)
                     }) { Text("Reset cube settings", color = AccentPrimary) }
-                    Text(
+                    if (activeSlider == null) Text(
                         "This diagnostic cube is projected through the solved camera poses. It is not a physical object track. The current reconstruction uses approximate camera intrinsics and provisional translation scale, so visual alignment is a diagnostic—not a final matchmove guarantee.",
                         color = TextSecondary, fontSize = 11.sp
                     )
                 } else {
-                    PopupSwitch("Show feature tracks", showTracks, onTracksChanged)
-                    Text("Marker colour", color = TextPrimary, fontSize = 13.sp)
-                    MarkerColourSelector(markerColorArgb, onMarkerColorChanged)
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    if (activeSlider == null) PopupSwitch("Show feature tracks", showTracks, onTracksChanged)
+                    if (activeSlider == null) {
+                        Text("Marker colour", color = TextPrimary, fontSize = 13.sp)
+                        MarkerColourSelector(markerColorArgb, onMarkerColorChanged)
+                    }
+                    if (activeSlider == null || activeSlider == "Marker size") Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Marker size", color = TextPrimary, fontSize = 13.sp, modifier = Modifier.weight(1f))
                         Text("${String.format("%.1f", markerSizeDp)} dp", color = AccentPrimary, fontSize = 12.sp)
                     }
                     Slider(value = markerSizeDp.coerceIn(2f, 5.5f), onValueChange = { activeSlider = "Marker size"; onMarkerSizeChanged(it) }, onValueChangeFinished = { activeSlider = null }, valueRange = 2f..5.5f)
-                    PopupSwitch("Dark outline", markerOutline, onMarkerOutlineChanged)
-                    PopupMetric("Frame", "$currentFrame / $frameCount")
-                    PopupMetric("Tracked observations on frame", trackPointCount.toString())
-                    Text(
+                    if (activeSlider == null) PopupSwitch("Dark outline", markerOutline, onMarkerOutlineChanged)
+                    if (activeSlider == null) PopupMetric("Frame", "$currentFrame / $frameCount")
+                    if (activeSlider == null) PopupMetric("Tracked observations on frame", trackPointCount.toString())
+                    if (activeSlider == null) Text(
                         "These markers are persistent 2D feature observations. A visible marker confirms that a feature was tracked on this frame; it does not by itself prove a valid 3D landmark or camera pose.",
                         color = TextSecondary, fontSize = 11.sp
                     )
@@ -169,21 +173,21 @@ private fun CubeColourSelector(selectedArgb: Int, onSelected: (Int) -> Unit) {
 }
 
 @Composable
-private fun CubeAngleSlider(label: String, value: Float, onChange: (Float) -> Unit) {
+private fun CubeAngleSlider(label: String, value: Float, onChange: (Float) -> Unit, onFocus: (String?) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(label, color = TextPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f))
         Text("${value.toInt()}°", color = AccentPrimary, fontSize = 11.sp)
     }
-    Slider(value = value.coerceIn(0f, 360f), onValueChange = { onChange(it) }, valueRange = 0f..360f)
+    Slider(value = value.coerceIn(0f, 360f), onValueChange = { onFocus(label); onChange(it) }, onValueChangeFinished = { onFocus(null) }, valueRange = 0f..360f)
 }
 
 @Composable
-private fun CubeValueSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit, format: String) {
+private fun CubeValueSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit, format: String, onFocus: (String?) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(label, color = TextPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f))
         Text(String.format(java.util.Locale.US, format, value), color = AccentPrimary, fontSize = 11.sp)
     }
-    Slider(value = value.coerceIn(range.start, range.endInclusive), onValueChange = onChange, valueRange = range)
+    Slider(value = value.coerceIn(range.start, range.endInclusive), onValueChange = { onFocus(label); onChange(it) }, onValueChangeFinished = { onFocus(null) }, valueRange = range)
 }
 @Composable
 private fun MarkerColourSelector(selectedArgb: Int, onSelected: (Int) -> Unit) {
