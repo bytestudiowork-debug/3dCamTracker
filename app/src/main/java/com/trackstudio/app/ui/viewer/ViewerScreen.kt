@@ -62,6 +62,9 @@ import com.trackstudio.app.viewmodel.ViewerViewModel
 
 @Composable
 fun ViewerScreen(
+    videoUri: Uri?,
+    videoFrameCount: Int,
+    videoRotationDegrees: Int,
     viewModel: ViewerViewModel,
     frameUris: List<Uri>,
     trackingFrameUris: List<Uri>,
@@ -76,8 +79,8 @@ fun ViewerScreen(
         mutableStateOf<Bitmap?>(null)
     }
 
-    LaunchedEffect(frameUris, trackingFrameUris, fps) {
-        viewModel.loadSequence(frameUris, fps, trackingFrameUris)
+    LaunchedEffect(frameUris, trackingFrameUris, fps, videoUri, videoFrameCount, sourceWidth, sourceHeight, videoRotationDegrees) {
+        viewModel.loadSequence(frameUris, fps, trackingFrameUris, videoUri, videoFrameCount, sourceWidth, sourceHeight, videoRotationDegrees)
     }
 
     LaunchedEffect(state.currentBitmap) {
