@@ -242,26 +242,38 @@ class ViewerViewModel(
     fun startAutoTrack() {
         if (_uiState.value.isAutoTracking) return
         val useOriginals = _uiState.value.reconstructionMode == ReconstructionMode.GLOBAL
-        if (useOriginals && trackingFrameUris.size != frameUris.size) {
+        val videoUri = sourceVideoUri
+        if (videoUri == null && useOriginals && trackingFrameUris.size != frameUris.size) {
             _uiState.update { it.copy(trackingError = "Original source frames are unavailable for Global reconstruction. Reopen or relink the project footage.") }
             return
         }
         val uris = (if (useOriginals) trackingFrameUris else frameUris).toList()
-        val decodeLimit = if (useOriginals) Int.MAX_VALUE else maxDecodeDimension
-        if (uris.size < 3) {
+        val totalFrames = if (videoUri != null) sourceVideoFrameCount else uris.size
+        val decodeLimit = if (useOriginals || videoUri != null) Int.MAX_VALUE else maxDecodeDimension
+        if (totalFrames < 3) {
             _uiState.update { it.copy(trackingError = "Auto Track needs at least three frames.") }
             return
         }
         playbackController.pause()
         trackingJob?.cancel()
-        _uiState.update { it.copy(isAutoTracking = true, trackingProgress = CameraTrackingProgress(0, uris.size, "Preparing footage", 0f, 0, uris.size), trackingError = null, trackingSummary = null, trackingPointsByFrame = emptyMap(), trackingVerificationByFrame = emptyMap()) }
+        _uiState.update { it.copy(isAutoTracking = true, trackingProgress = CameraTrackingProgress(0, totalFrames, "Preparing footage", 0f, 0, totalFrames), trackingError = null, trackingSummary = null, trackingPointsByFrame = emptyMap(), trackingVerificationByFrame = emptyMap()) }
         trackingJob = viewModelScope.launch {
             var intrinsics: Mat? = null
+            var sequentialDecoder: SequentialVideoFrameDecoder? = null
             try {
                 check(OpenCvRuntime.ensureLoaded()) { "OpenCV could not be initialized on this device." }
-                val dimensions = withContext(Dispatchers.IO) {
-                    val bitmap = decodeSampled(uris.first(), decodeLimit, Bitmap.Config.ARGB_8888)
-                    try { bitmap.width to bitmap.height } finally { bitmap.recycle() }
+                val dimensions = if (videoUri != null) {
+                    sourceVideoWidth to sourceVideoHeight
+                } else {
+                    withContext(Dispatchers.IO) {
+                        val bitmap = decodeSampled(uris.first(), decodeLimit, Bitmap.Config.ARGB_8888)
+                        try { bitmap.width to bitmap.height } finally { bitmap.recycle() }
+                    }
+                }
+                if (videoUri != null) {
+                    sequentialDecoder = withContext(Dispatchers.IO) {
+                        SequentialVideoFrameDecoder(appContext, videoUri, sourceVideoRotation)
+                    }
                 }
                 val width = dimensions.first
                 val height = dimensions.second
@@ -272,11 +284,16 @@ class ViewerViewModel(
                 intrinsics = cameraMatrix
                 cameraMatrix.put(0, 0, focal, 0.0, (width - 1) * 0.5, 0.0, focal, (height - 1) * 0.5, 0.0, 0.0, 1.0)
                 val result = reconstructionEngine.solve(
-                    frameCount = uris.size,
+                    frameCount = totalFrames,
                     cameraMatrix = cameraMatrix,
                     frameProvider = { index ->
                         withContext(Dispatchers.IO) {
-                            val bitmap = decodeSampled(uris[index], decodeLimit, Bitmap.Config.ARGB_8888)
+                            val bitmap = if (sequentialDecoder != null) {
+                                sequentialDecoder!!.nextFrame()
+                                    ?: error("Video decoder ended before frame " + (index + 1) + ".")
+                            } else {
+                                decodeSampled(uris[index], decodeLimit, Bitmap.Config.ARGB_8888)
+                            }
                             val mat = Mat()
                             try { Utils.bitmapToMat(bitmap, mat); mat }
                             catch (failure: Throwable) { mat.release(); throw failure }
@@ -292,7 +309,7 @@ class ViewerViewModel(
                     .filter { it.observations.size >= 2 }
                     .flatMap { it.observations.asSequence() }
                     .filter { observation ->
-                        observation.frameIndex in uris.indices &&
+                        observation.frameIndex in 0 until totalFrames &&
                             observation.x.isFinite() && observation.y.isFinite()
                     }
                     .groupBy { it.frameIndex }
@@ -312,7 +329,7 @@ class ViewerViewModel(
                 _uiState.update { state ->
                     state.copy(
                         isAutoTracking = false,
-                        trackingProgress = CameraTrackingProgress(uris.size, uris.size, "Camera solve complete", 1f, uris.size, uris.size),
+                        trackingProgress = CameraTrackingProgress(totalFrames, totalFrames, "Camera solve complete", 1f, totalFrames, totalFrames),
                         trackingSummary = CameraTrackingSummary(
                             result.registeredCameraCount,
                             result.processedFrames,
@@ -343,6 +360,7 @@ class ViewerViewModel(
             } catch (failure: Throwable) {
                 _uiState.update { it.copy(isAutoTracking = false, trackingError = failure.message ?: "Camera tracking failed.") }
             } finally {
+                sequentialDecoder?.close()
                 intrinsics?.release()
                 trackingJob = null
             }
