@@ -38,7 +38,8 @@ data class NewProjectUiState(
     val colorSpace: ColorSpace = ColorSpace.SRGB,
 
     val creationPhase: CreationPhase = CreationPhase.IDLE,
-    val creationProgress: Pair<Int, Int> = 0 to 0
+    val creationProgress: Pair<Int, Int> = 0 to 0,
+    val proxyWarning: String? = null
 ) {
     val canCreateProject: Boolean
         get() = projectName.isNotBlank() &&
