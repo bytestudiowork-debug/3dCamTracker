@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import com.trackstudio.app.data.io.ImageSequenceImporter
 import com.trackstudio.app.data.io.ImportProgress
+import com.trackstudio.app.data.io.VideoSourceProbe
 import com.trackstudio.app.data.model.FootageInfo
 import com.trackstudio.app.data.model.ProjectSettings
 import com.trackstudio.app.data.repository.ProjectRepository
@@ -48,6 +49,31 @@ class ProjectLoader(
                     "Project metadata could not be loaded."
                 )
             )
+            return@flow
+        }
+
+        if (settings.sourceVideoUri.isNotBlank()) {
+            val videoUri = Uri.parse(settings.sourceVideoUri)
+            if (!hasPersistedReadPermission(videoUri)) {
+                emit(ProjectLoadResult.Failed("Video permission is unavailable. Please relink the source video."))
+                return@flow
+            }
+            try {
+                val info = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    VideoSourceProbe.probe(appContext, videoUri)
+                }
+                val footage = FootageInfo(
+                    frames = emptyList(), detectedPattern = "VIDEO",
+                    width = info.width, height = info.height, frameCount = info.frameCount,
+                    totalSizeBytes = info.sizeBytes, isResolutionConsistent = true
+                )
+                emit(ProjectLoadResult.Success(settings.copy(
+                    footage = footage, frameRate = info.frameRate,
+                    videoRotationDegrees = info.rotationDegrees
+                )))
+            } catch (error: Exception) {
+                emit(ProjectLoadResult.Failed(error.message ?: "Unable to reopen source video."))
+            }
             return@flow
         }
 

@@ -9,8 +9,7 @@ import com.trackstudio.app.data.io.ImageSequenceImporter
 import com.trackstudio.app.data.io.ImportProgress
 import com.trackstudio.app.data.io.ProxyGenerator
 import com.trackstudio.app.data.io.ProxyProgress
-import com.trackstudio.app.data.io.VideoFrameExtractor
-import com.trackstudio.app.data.io.VideoExtractionProgress
+import com.trackstudio.app.data.io.VideoSourceProbe
 import com.trackstudio.app.data.model.ProjectSettings
 import com.trackstudio.app.data.repository.ProjectRepository
 import com.trackstudio.app.util.FileUtils
@@ -21,12 +20,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 class NewProjectViewModel(
     private val appContext: Context,
     private val importer: ImageSequenceImporter,
-    private val videoExtractor: VideoFrameExtractor,
     private val proxyGenerator: ProxyGenerator,
     private val repository: ProjectRepository
 ) : ViewModel() {
@@ -47,6 +47,8 @@ class NewProjectViewModel(
      * the imported sequence, while this URI identifies its source.
      */
     private var selectedFolderUri: Uri? = null
+    private var selectedVideoUri: Uri? = null
+    private var selectedVideoRotationDegrees: Int = 0
     private var importJob: Job? = null
 
     /**
@@ -145,6 +147,8 @@ class NewProjectViewModel(
 
     private fun importFramesFolder(folderUri: Uri) {
         importJob?.cancel()
+        selectedVideoUri = null
+        selectedVideoRotationDegrees = 0
         takePersistableReadPermission(folderUri)
         _uiState.update {
             it.copy(importPhase = ImportPhase.PROBING, importError = null,
@@ -156,41 +160,37 @@ class NewProjectViewModel(
     private fun importVideo(videoUri: Uri) {
         importJob?.cancel()
         takePersistableReadPermission(videoUri)
+        selectedFolderUri = null
+        selectedVideoUri = videoUri
+        selectedVideoRotationDegrees = 0
         _uiState.update {
-            it.copy(importPhase = ImportPhase.EXTRACTING_VIDEO, importError = null,
-                extractionProgress = 0 to 0, extractionCurrentName = "")
+            it.copy(importPhase = ImportPhase.PROBING, importError = null,
+                probingProgress = 0 to 0, probingCurrentName = "Reading video stream metadata...")
         }
         importJob = viewModelScope.launch {
-            val sourceFramesDir = FileUtils.proxyDir(
-                appContext, pendingProjectId,
-                "source_frames_${UUID.randomUUID().toString().take(8)}"
-            )
-            videoExtractor.extract(videoUri, sourceFramesDir).collect { progress ->
-                when (progress) {
-                    is VideoExtractionProgress.Started ->
-                        _uiState.update {
-                            it.copy(extractionProgress = 0 to progress.estimatedFrames,
-                                frameRate = progress.frameRate)
-                        }
-                    is VideoExtractionProgress.FrameWritten ->
-                        _uiState.update {
-                            it.copy(extractionProgress = progress.done to progress.total,
-                                extractionCurrentName = progress.name)
-                        }
-                    is VideoExtractionProgress.Done -> {
-                        val framesUri = Uri.fromFile(progress.outputDir)
-                        _uiState.update {
-                            it.copy(importPhase = ImportPhase.PROBING,
-                                frameRate = progress.frameRate,
-                                probingProgress = 0 to progress.frameCount,
-                                probingCurrentName = "Validating decoded frames...")
-                        }
-                        probeFolder(framesUri)
-                    }
-                    is VideoExtractionProgress.Failed ->
-                        _uiState.update {
-                            it.copy(importPhase = ImportPhase.FAILED, importError = progress.reason)
-                        }
+            try {
+                val info = withContext(Dispatchers.IO) {
+                    VideoSourceProbe.probe(appContext, videoUri)
+                }
+                selectedVideoRotationDegrees = info.rotationDegrees
+                val footage = com.trackstudio.app.data.model.FootageInfo(
+                    frames = emptyList(), detectedPattern = "VIDEO",
+                    width = info.width, height = info.height, frameCount = info.frameCount,
+                    totalSizeBytes = info.sizeBytes, isResolutionConsistent = true
+                )
+                _uiState.update {
+                    it.copy(importPhase = ImportPhase.PROBED, footage = footage,
+                        frameRate = info.frameRate,
+                        proxySettings = it.proxySettings.copy(enabled = false),
+                        probingProgress = info.frameCount to info.frameCount,
+                        probingCurrentName = "Video ready — frames decode during tracking")
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(importPhase = ImportPhase.FAILED,
+                        importError = error.message ?: "Unable to read this video.")
                 }
             }
         }
@@ -255,10 +255,11 @@ class NewProjectViewModel(
 
         val state = _uiState.value
         val sourceUri = selectedFolderUri
+        val videoUri = selectedVideoUri
 
         if (
             !state.canCreateProject ||
-            sourceUri == null
+            (sourceUri == null && videoUri == null)
         ) {
             return
         }
@@ -271,7 +272,10 @@ class NewProjectViewModel(
                     state.projectName.trim(),
 
                 sourceFolderUri =
-                    sourceUri.toString(),
+                    sourceUri?.toString().orEmpty(),
+
+                sourceVideoUri = selectedVideoUri?.toString().orEmpty(),
+                videoRotationDegrees = selectedVideoRotationDegrees,
 
                 footage =
                     state.footage,
@@ -289,7 +293,7 @@ class NewProjectViewModel(
                     state.colorSpace
             )
 
-        if (!state.proxySettings.enabled) {
+        if (videoUri != null || !state.proxySettings.enabled) {
 
             repository.saveProjectMetadata(settings)
 
@@ -297,8 +301,8 @@ class NewProjectViewModel(
 
             _uiState.update {
                 it.copy(
-                    creationPhase =
-                        CreationPhase.DONE
+                    creationPhase = CreationPhase.DONE,
+                    proxyWarning = if (videoUri != null && state.proxySettings.enabled) "Video remains in its original format; frames decode on demand. Image proxies are not generated for video yet." else null
                 )
             }
 
@@ -410,7 +414,6 @@ class NewProjectViewModel(
                 appContext = appContext,
 
                 importer = ImageSequenceImporter(resolver),
-                videoExtractor = VideoFrameExtractor(appContext),
                 proxyGenerator = ProxyGenerator(resolver),
                 repository =
                     ProjectRepository(

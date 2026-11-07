@@ -220,6 +220,8 @@ class ProjectRepository(
                 "sourceFolderUri",
                 settings.sourceFolderUri
             )
+            put("sourceVideoUri", settings.sourceVideoUri)
+            put("videoRotationDegrees", settings.videoRotationDegrees)
 
             put(
                 "frameRate",
@@ -311,6 +313,8 @@ class ProjectRepository(
                     ""
                 ),
 
+            sourceVideoUri = json.optString("sourceVideoUri", ""),
+            videoRotationDegrees = json.optInt("videoRotationDegrees", 0),
             frameRate =
                 json.optDouble(
                     "frameRate",
