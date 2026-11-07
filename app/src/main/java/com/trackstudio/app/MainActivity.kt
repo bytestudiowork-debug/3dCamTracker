@@ -455,6 +455,12 @@ private fun TrackStudioApp() {
                         trackingFrameUris =
                             originalFrameUris,
 
+                        sourceWidth =
+                            project.footage.width,
+
+                        sourceHeight =
+                            project.footage.height,
+
                         fps =
                             project.frameRate,
 

@@ -59,6 +59,8 @@ fun ViewerCanvas(
     trackingPointSizeDp: Float = 3f,
     trackingPointOutline: Boolean = true,
     trackingVerificationSegments: List<TrackingVerificationSegment> = emptyList(),
+    trackingCoordinateWidth: Int = 0,
+    trackingCoordinateHeight: Int = 0,
     verificationColor: Color = Color(0xFF00E5FF),
     verificationRotationX: Float = 0f,
     verificationRotationY: Float = 0f,
@@ -266,6 +268,8 @@ fun ViewerCanvas(
                     val fitScale = min(size.width / bitmap.width, size.height / bitmap.height)
                     val imageLeft = (size.width - bitmap.width * fitScale) * 0.5f
                     val imageTop = (size.height - bitmap.height * fitScale) * 0.5f
+                    val coordinateScaleX = if (trackingCoordinateWidth > 0) bitmap.width.toFloat() / trackingCoordinateWidth else 1f
+                    val coordinateScaleY = if (trackingCoordinateHeight > 0) bitmap.height.toFloat() / trackingCoordinateHeight else 1f
                     if (trackingVerificationSegments.isNotEmpty()) {
                         val points = trackingVerificationSegments.flatMap { listOf(it.startX to it.startY, it.endX to it.endY) }
                         val centerX = points.map { it.first }.average().toFloat()
@@ -283,15 +287,15 @@ fun ViewerCanvas(
                             val dy = (y - centerY) * displayScale
                             val rotatedX = dx * sx - dy * kotlin.math.sin(rz) + dy * shearX
                             val rotatedY = dx * kotlin.math.sin(rz) + dy * sy + dx * shearY
-                            return Offset(imageLeft + (centerX + rotatedX) * fitScale, imageTop + (centerY + rotatedY) * fitScale)
+                            return Offset(imageLeft + (centerX + rotatedX) * coordinateScaleX * fitScale, imageTop + (centerY + rotatedY) * coordinateScaleY * fitScale)
                         }
                         trackingVerificationSegments.forEach { segment ->
                             drawLine(color = verificationColor, start = transformed(segment.startX, segment.startY), end = transformed(segment.endX, segment.endY), strokeWidth = verificationStroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
                         }
                     }
                     trackingPoints.forEach { point ->
-                        val x = imageLeft + point.x.toFloat() * fitScale
-                        val y = imageTop + point.y.toFloat() * fitScale
+                        val x = imageLeft + point.x.toFloat() * coordinateScaleX * fitScale
+                        val y = imageTop + point.y.toFloat() * coordinateScaleY * fitScale
                         if (x >= imageLeft && x <= imageLeft + bitmap.width * fitScale &&
                             y >= imageTop && y <= imageTop + bitmap.height * fitScale
                         ) {

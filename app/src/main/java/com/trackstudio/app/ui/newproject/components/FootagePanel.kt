@@ -132,7 +132,7 @@ private fun ExtractionProgress(state: NewProjectUiState) {
             modifier = Modifier.fillMaxWidth()
         )
         Text(
-            if (total > 0) "Decoded $done / $total frames" else "Preparing video decoder...",
+            if (total > 0) "Decoded $done / $total frames" else "Decoded $done frames...",
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary,
             modifier = Modifier.padding(top = 6.dp)

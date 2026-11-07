@@ -181,6 +181,7 @@ class NewProjectViewModel(
                         val framesUri = Uri.fromFile(progress.outputDir)
                         _uiState.update {
                             it.copy(importPhase = ImportPhase.PROBING,
+                                frameRate = progress.frameRate,
                                 probingProgress = 0 to progress.frameCount,
                                 probingCurrentName = "Validating decoded frames...")
                         }

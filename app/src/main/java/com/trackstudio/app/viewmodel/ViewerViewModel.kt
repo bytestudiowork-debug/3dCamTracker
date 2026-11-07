@@ -153,7 +153,7 @@ class ViewerViewModel(
 
         sequenceGeneration++
         frameUris = uris.toList()
-        trackingFrameUris = if (sourceUris.size == uris.size) sourceUris.toList() else uris.toList()
+        trackingFrameUris = sourceUris.toList()
         bitmapCache.evictAll()
         frameBytes = 0
         thumbnailCount = 0
@@ -226,6 +226,10 @@ class ViewerViewModel(
     fun startAutoTrack() {
         if (_uiState.value.isAutoTracking) return
         val useOriginals = _uiState.value.reconstructionMode == ReconstructionMode.GLOBAL
+        if (useOriginals && trackingFrameUris.size != frameUris.size) {
+            _uiState.update { it.copy(trackingError = "Original source frames are unavailable for Global reconstruction. Reopen or relink the project footage.") }
+            return
+        }
         val uris = (if (useOriginals) trackingFrameUris else frameUris).toList()
         val decodeLimit = if (useOriginals) Int.MAX_VALUE else maxDecodeDimension
         if (uris.size < 3) {

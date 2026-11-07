@@ -57,6 +57,7 @@ import com.trackstudio.app.ui.theme.TextPrimary
 import com.trackstudio.app.ui.theme.TextSecondary
 import com.trackstudio.app.ui.theme.ViewerBackground
 import com.trackstudio.app.tracking.TrackingVerificationSegment
+import com.trackstudio.app.tracking.ReconstructionMode
 import com.trackstudio.app.viewmodel.ViewerViewModel
 
 @Composable
@@ -64,6 +65,8 @@ fun ViewerScreen(
     viewModel: ViewerViewModel,
     frameUris: List<Uri>,
     trackingFrameUris: List<Uri>,
+    sourceWidth: Int,
+    sourceHeight: Int,
     fps: Double,
     projectName: String,
     onBack: () -> Unit
@@ -160,6 +163,8 @@ fun ViewerScreen(
                             bitmap = state.currentBitmap,
                             trackingPoints = state.trackingPointsByFrame[state.playback.currentFrame].orEmpty(),
                             verificationSegments = state.trackingVerificationByFrame[state.playback.currentFrame].orEmpty(),
+                            trackingCoordinateWidth = if (state.reconstructionMode == ReconstructionMode.GLOBAL) sourceWidth else 0,
+                            trackingCoordinateHeight = if (state.reconstructionMode == ReconstructionMode.GLOBAL) sourceHeight else 0,
                             showVerificationOverlay = showVerificationOverlay,
                             showTrackPointsOverlay = showTrackPointsOverlay,
                             markerColorArgb = markerColorArgb,
@@ -302,6 +307,8 @@ private fun ViewerPanel(
     bitmap: Bitmap?,
     trackingPoints: List<com.trackstudio.app.tracking.CameraFeatureObservation>,
     verificationSegments: List<TrackingVerificationSegment>,
+    trackingCoordinateWidth: Int,
+    trackingCoordinateHeight: Int,
     showVerificationOverlay: Boolean,
     showTrackPointsOverlay: Boolean,
     markerColorArgb: Int,
@@ -345,6 +352,8 @@ private fun ViewerPanel(
             trackingPointSizeDp = markerSizeDp,
             trackingPointOutline = markerOutline,
             trackingVerificationSegments = if (showVerificationOverlay) verificationSegments else emptyList(),
+            trackingCoordinateWidth = trackingCoordinateWidth,
+            trackingCoordinateHeight = trackingCoordinateHeight,
             verificationColor = Color(cubeColorArgb.toLong() and 0xFFFFFFFFL),
             verificationRotationX = cubeRotationX,
             verificationRotationY = cubeRotationY,
