@@ -22,13 +22,14 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import android.view.View
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -70,18 +71,6 @@ fun NewProjectScreen(
     onProjectCreated: (ProjectSettings) -> Unit
 ) {
     val state by viewModel.uiState.collectAsState()
-    val dialogView = LocalView.current
-
-    SideEffect {
-        val dialogWindow = (dialogView.parent as? DialogWindowProvider)?.window
-        if (dialogWindow != null) {
-            WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
-            WindowInsetsControllerCompat(dialogWindow, dialogWindow.decorView).apply {
-                systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                hide(WindowInsetsCompat.Type.systemBars())
-            }
-        }
-    }
 
     var selectedTab by remember {
         mutableStateOf(SettingsTab.FOOTAGE)
@@ -108,6 +97,26 @@ fun NewProjectScreen(
                 usePlatformDefaultWidth = false
             )
     ) {
+        val dialogView = LocalView.current
+        val dialogWindow = (dialogView.parent as? DialogWindowProvider)?.window
+        DisposableEffect(dialogWindow) {
+            if (dialogWindow != null) {
+                WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
+                val controller = WindowInsetsControllerCompat(dialogWindow, dialogWindow.decorView)
+                controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                val listener = View.OnSystemUiVisibilityChangeListener { visibility ->
+                    val required = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    if (visibility and required != required) {
+                        controller.hide(WindowInsetsCompat.Type.systemBars())
+                    }
+                }
+                dialogWindow.decorView.setOnSystemUiVisibilityChangeListener(listener)
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+            }
+            onDispose {
+                dialogWindow?.decorView?.setOnSystemUiVisibilityChangeListener(null)
+            }
+        }
 
         Column(
             modifier =
