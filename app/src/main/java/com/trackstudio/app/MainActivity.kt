@@ -439,6 +439,11 @@ private fun TrackStudioApp() {
                             )
                         }
 
+                    val originalFrameUris =
+                        remember(project.id, project.footage.frameCount) {
+                            project.footage.frames.map { it.uri }
+                        }
+
                     ViewerScreen(
 
                         viewModel =
@@ -446,6 +451,9 @@ private fun TrackStudioApp() {
 
                         frameUris =
                             viewerFrameUris,
+
+                        trackingFrameUris =
+                            originalFrameUris,
 
                         fps =
                             project.frameRate,

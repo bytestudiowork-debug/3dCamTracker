@@ -63,6 +63,7 @@ import com.trackstudio.app.viewmodel.ViewerViewModel
 fun ViewerScreen(
     viewModel: ViewerViewModel,
     frameUris: List<Uri>,
+    trackingFrameUris: List<Uri>,
     fps: Double,
     projectName: String,
     onBack: () -> Unit
@@ -73,8 +74,8 @@ fun ViewerScreen(
         mutableStateOf<Bitmap?>(null)
     }
 
-    LaunchedEffect(frameUris, fps) {
-        viewModel.loadSequence(frameUris, fps)
+    LaunchedEffect(frameUris, trackingFrameUris, fps) {
+        viewModel.loadSequence(frameUris, fps, trackingFrameUris)
     }
 
     LaunchedEffect(state.currentBitmap) {

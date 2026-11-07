@@ -90,6 +90,7 @@ class ViewerViewModel(
     val uiState: StateFlow<ViewerUiState> = _uiState.asStateFlow()
 
     private var frameUris: List<Uri> = emptyList()
+    private var trackingFrameUris: List<Uri> = emptyList()
 
     private val maxHeapMb =
         Runtime.getRuntime().maxMemory() / (1024L * 1024L)
@@ -140,7 +141,7 @@ class ViewerViewModel(
             }
         )
 
-    fun loadSequence(uris: List<Uri>, fps: Double) {
+    fun loadSequence(uris: List<Uri>, fps: Double, sourceUris: List<Uri> = uris) {
         trackingJob?.cancel()
         trackingJob = null
         requestJob?.cancel()
@@ -152,6 +153,7 @@ class ViewerViewModel(
 
         sequenceGeneration++
         frameUris = uris.toList()
+        trackingFrameUris = if (sourceUris.size == uris.size) sourceUris.toList() else uris.toList()
         bitmapCache.evictAll()
         frameBytes = 0
         thumbnailCount = 0
@@ -223,7 +225,9 @@ class ViewerViewModel(
 
     fun startAutoTrack() {
         if (_uiState.value.isAutoTracking) return
-        val uris = frameUris.toList()
+        val useOriginals = _uiState.value.reconstructionMode == ReconstructionMode.GLOBAL
+        val uris = (if (useOriginals) trackingFrameUris else frameUris).toList()
+        val decodeLimit = if (useOriginals) Int.MAX_VALUE else maxDecodeDimension
         if (uris.size < 3) {
             _uiState.update { it.copy(trackingError = "Auto Track needs at least three frames.") }
             return
@@ -236,7 +240,7 @@ class ViewerViewModel(
             try {
                 check(OpenCvRuntime.ensureLoaded()) { "OpenCV could not be initialized on this device." }
                 val dimensions = withContext(Dispatchers.IO) {
-                    val bitmap = decodeSampled(uris.first(), maxDecodeDimension, Bitmap.Config.ARGB_8888)
+                    val bitmap = decodeSampled(uris.first(), decodeLimit, Bitmap.Config.ARGB_8888)
                     try { bitmap.width to bitmap.height } finally { bitmap.recycle() }
                 }
                 val width = dimensions.first
@@ -252,7 +256,7 @@ class ViewerViewModel(
                     cameraMatrix = cameraMatrix,
                     frameProvider = { index ->
                         withContext(Dispatchers.IO) {
-                            val bitmap = decodeSampled(uris[index], maxDecodeDimension, Bitmap.Config.ARGB_8888)
+                            val bitmap = decodeSampled(uris[index], decodeLimit, Bitmap.Config.ARGB_8888)
                             val mat = Mat()
                             try { Utils.bitmapToMat(bitmap, mat); mat }
                             catch (failure: Throwable) { mat.release(); throw failure }

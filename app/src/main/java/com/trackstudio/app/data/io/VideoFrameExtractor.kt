@@ -3,6 +3,7 @@ package com.trackstudio.app.data.io
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.ImageFormat
+import android.graphics.Matrix
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
@@ -53,6 +54,7 @@ class VideoFrameExtractor(private val context: Context) {
             val mime = requireNotNull(format.getString(MediaFormat.KEY_MIME))
             val width = format.getInteger(MediaFormat.KEY_WIDTH)
             val height = format.getInteger(MediaFormat.KEY_HEIGHT)
+            val rotation = runCatching { format.getInteger(MediaFormat.KEY_ROTATION) }.getOrDefault(0)
             val fps = runCatching { format.getInteger(MediaFormat.KEY_FRAME_RATE).toDouble() }
                 .getOrDefault(24.0).takeIf { it > 0.0 } ?: 24.0
             val durationUs = runCatching { format.getLong(MediaFormat.KEY_DURATION) }.getOrDefault(0L)
@@ -69,6 +71,8 @@ class VideoFrameExtractor(private val context: Context) {
             var outputEnded = false
             var frameIndex = 0
             var totalBytes = 0L
+            var firstPresentationTimeUs = -1L
+            var lastPresentationTimeUs = -1L
 
             while (!outputEnded) {
                 currentCoroutineContext().ensureActive()
@@ -96,7 +100,12 @@ class VideoFrameExtractor(private val context: Context) {
                         if (info.size > 0) {
                             val image = decoder.getOutputImage(outputIndex)
                                 ?: error("This device's decoder cannot expose decoded video frames. Try a video encoded with a different codec.")
-                            val bitmap = image.useAndConvertToBitmap()
+                            val decodedBitmap = image.useAndConvertToBitmap()
+                            val bitmap = if (rotation % 360 != 0) {
+                                val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
+                                Bitmap.createBitmap(decodedBitmap, 0, 0, decodedBitmap.width, decodedBitmap.height, matrix, true)
+                                    .also { if (it !== decodedBitmap) decodedBitmap.recycle() }
+                            } else decodedBitmap
                             val frameFile = File(outputDir, "frame_%06d.png".format(frameIndex))
                             FileOutputStream(frameFile).use { stream ->
                                 check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) {
@@ -105,6 +114,8 @@ class VideoFrameExtractor(private val context: Context) {
                             }
                             bitmap.recycle()
                             totalBytes += frameFile.length()
+                            if (firstPresentationTimeUs < 0L) firstPresentationTimeUs = info.presentationTimeUs
+                            lastPresentationTimeUs = info.presentationTimeUs
                             frameIndex++
                             emit(VideoExtractionProgress.FrameWritten(frameIndex, estimate, frameFile.name))
                         }
@@ -117,7 +128,10 @@ class VideoFrameExtractor(private val context: Context) {
                 }
             }
             check(frameIndex > 0) { "The video decoder did not produce any frames." }
-            emit(VideoExtractionProgress.Done(outputDir, frameIndex, width, height, fps, totalBytes))
+            val measuredFps = if (frameIndex > 1 && lastPresentationTimeUs > firstPresentationTimeUs) {
+                (frameIndex - 1) * 1_000_000.0 / (lastPresentationTimeUs - firstPresentationTimeUs)
+            } else fps
+            emit(VideoExtractionProgress.Done(outputDir, frameIndex, width, height, measuredFps, totalBytes))
         } catch (cancelled: CancellationException) {
             outputDir.deleteRecursively()
             throw cancelled
@@ -145,7 +159,9 @@ class VideoFrameExtractor(private val context: Context) {
             val yBuffer = yPlane.buffer
             val uBuffer = uPlane.buffer
             val vBuffer = vPlane.buffer
-            val pixels = IntArray(width * height)
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val rowPixels = IntArray(width)
+
             for (y in 0 until height) {
                 val sourceY = crop.top + y
                 for (x in 0 until width) {
@@ -159,14 +175,14 @@ class VideoFrameExtractor(private val context: Context) {
                     val r = ((298 * c + 409 * vv + 128) shr 8).coerceIn(0, 255)
                     val g = ((298 * c - 100 * uu - 208 * vv + 128) shr 8).coerceIn(0, 255)
                     val b = ((298 * c + 516 * uu + 128) shr 8).coerceIn(0, 255)
-                    pixels[y * width + x] = (0xff shl 24) or (r shl 16) or (g shl 8) or b
+                    rowPixels[x] = (0xff shl 24) or (r shl 16) or (g shl 8) or b
                 }
+                bitmap.setPixels(rowPixels, 0, width, 0, y, width, 1)
             }
-            return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply {
-                setPixels(pixels, 0, width, 0, 0, width, height)
-            }
+            return bitmap
         } finally {
             close()
         }
     }
+
 }
