@@ -81,12 +81,14 @@ class VideoProxyGenerator(private val context: Context) {
                 // of its pixels away during a second resize. Older devices retain the
                 // compatible full-decode + resize fallback.
                 val decoded = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1 && proxyScale < 0.999f) {
-                    retriever.getScaledFrameAtTime(
-                        timestamps[index],
-                        MediaMetadataRetriever.OPTION_CLOSEST,
-                        targetWidth,
-                        targetHeight
-                    )
+                    runCatching {
+                        retriever.getScaledFrameAtTime(
+                            timestamps[index],
+                            MediaMetadataRetriever.OPTION_CLOSEST,
+                            targetWidth,
+                            targetHeight
+                        )
+                    }.getOrNull()
                 } else {
                     retriever.getFrameAtTime(
                         timestamps[index],
