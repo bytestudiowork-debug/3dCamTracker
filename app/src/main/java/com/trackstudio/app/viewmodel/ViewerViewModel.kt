@@ -297,9 +297,12 @@ class ViewerViewModel(
             _uiState.update { it.copy(trackingError = "Original source frames are unavailable for Global reconstruction. Reopen or relink the project footage.") }
             return
         }
-        val uris = (if (useOriginals) trackingFrameUris else frameUris).toList()
+        // A completed video proxy sequence is the tracking working set as well as
+        // the playback source. Only fall back to sequential source decoding when
+        // proxy generation was disabled or failed.
+        val uris = (if (videoUri != null) frameUris else if (useOriginals) trackingFrameUris else frameUris).toList()
         val totalFrames = if (videoUri != null) sourceVideoFrameCount else uris.size
-        val decodeLimit = if (useOriginals || videoUri != null) Int.MAX_VALUE else maxDecodeDimension
+        val decodeLimit = if (videoUri != null && uris.isEmpty() || useOriginals && videoUri == null) Int.MAX_VALUE else maxDecodeDimension
         if (totalFrames < 3) {
             _uiState.update { it.copy(trackingError = "Auto Track needs at least three frames.") }
             return
@@ -312,7 +315,7 @@ class ViewerViewModel(
             var sequentialDecoder: SequentialVideoFrameDecoder? = null
             try {
                 check(OpenCvRuntime.ensureLoaded()) { "OpenCV could not be initialized on this device." }
-                val dimensions = if (videoUri != null) {
+                val dimensions = if (videoUri != null && uris.isEmpty()) {
                     sourceVideoWidth to sourceVideoHeight
                 } else {
                     withContext(Dispatchers.IO) {
@@ -320,7 +323,7 @@ class ViewerViewModel(
                         try { bitmap.width to bitmap.height } finally { bitmap.recycle() }
                     }
                 }
-                if (videoUri != null) {
+                if (videoUri != null && uris.isEmpty()) {
                     sequentialDecoder = withContext(Dispatchers.IO) {
                         SequentialVideoFrameDecoder(appContext, videoUri, sourceVideoRotation)
                     }
