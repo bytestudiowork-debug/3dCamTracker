@@ -73,6 +73,9 @@ class VideoProxyGenerator(private val context: Context) {
             val orientedHeight = if (rotatedSource) sourceWidth else sourceHeight
             val targetWidth = (orientedWidth * proxyScale).toInt().coerceAtLeast(1)
             val targetHeight = (orientedHeight * proxyScale).toInt().coerceAtLeast(1)
+            // MediaMetadataRetriever decodes the coded (pre-rotation) frame.
+            val decoderWidth = (sourceWidth * proxyScale).toInt().coerceAtLeast(1)
+            val decoderHeight = (sourceHeight * proxyScale).toInt().coerceAtLeast(1)
 
             for (index in 0 until frameCount) {
                 emit(ProxyProgress.Generating(index, frameCount))
@@ -85,8 +88,8 @@ class VideoProxyGenerator(private val context: Context) {
                         retriever.getScaledFrameAtTime(
                             timestamps[index],
                             MediaMetadataRetriever.OPTION_CLOSEST,
-                            targetWidth,
-                            targetHeight
+                            decoderWidth,
+                            decoderHeight
                         )
                     }.getOrNull()
                 } else {
