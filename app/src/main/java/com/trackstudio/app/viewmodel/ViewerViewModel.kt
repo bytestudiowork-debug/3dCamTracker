@@ -523,7 +523,6 @@ class ViewerViewModel(
                         defaultAnchorZ = defaultAnchor.z,
                         anchorAxisLength = defaultAxisLength,
                         trackingError = if (result.registeredCameraCount < 3) "Only ${result.registeredCameraCount} cameras registered. The solve may be incomplete; try footage with stronger parallax." else null
-                    )
                 )
                 _uiState.value = completedState
                 if (activeProjectId.isNotBlank()) {
