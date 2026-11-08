@@ -6,6 +6,7 @@ import android.graphics.Matrix
 import android.media.MediaExtractor
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -65,19 +66,39 @@ class VideoProxyGenerator(private val context: Context) {
 
             for (index in 0 until frameCount) {
                 emit(ProxyProgress.Generating(index, frameCount))
-                val decoded = retriever.getFrameAtTime(
-                    timestamps[index],
-                    MediaMetadataRetriever.OPTION_CLOSEST
-                ) ?: error("Unable to decode video frame ${index + 1} for proxy generation.")
+                // Ask Android's decoder for the proxy dimensions directly. On API 27+
+                // this avoids allocating a full-resolution Bitmap only to throw most
+                // of its pixels away during a second resize. Older devices retain the
+                // compatible full-decode + resize fallback.
+                val sourceWidth = runCatching { retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toInt() }
+                    .getOrNull()?.coerceAtLeast(1) ?: 1
+                val sourceHeight = runCatching { retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toInt() }
+                    .getOrNull()?.coerceAtLeast(1) ?: 1
+                val rotatedSource = rotationDegrees % 180 != 0
+                val orientedWidth = if (rotatedSource) sourceHeight else sourceWidth
+                val orientedHeight = if (rotatedSource) sourceWidth else sourceHeight
+                val targetWidth = (orientedWidth * proxyScale).toInt().coerceAtLeast(1)
+                val targetHeight = (orientedHeight * proxyScale).toInt().coerceAtLeast(1)
+                val decoded = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1 && proxyScale < 0.999f) {
+                    retriever.getScaledFrameAtTime(
+                        timestamps[index],
+                        MediaMetadataRetriever.OPTION_CLOSEST,
+                        targetWidth,
+                        targetHeight
+                    )
+                } else {
+                    retriever.getFrameAtTime(
+                        timestamps[index],
+                        MediaMetadataRetriever.OPTION_CLOSEST
+                    )
+                } ?: error("Unable to decode video frame ${index + 1} for proxy generation.")
 
                 val rotated = rotateFrame(decoded, rotationDegrees)
-                val longest = maxOf(rotated.width, rotated.height)
-                val targetWidth = (rotated.width * proxyScale).toInt().coerceAtLeast(1)
-                val targetHeight = (rotated.height * proxyScale).toInt().coerceAtLeast(1)
-                val scaled = if (proxyScale < 0.999f) {
-                    Bitmap.createScaledBitmap(rotated, targetWidth, targetHeight, true)
+                val scaled = if (rotated.width != targetWidth || rotated.height != targetHeight) {
+                    Bitmap.createScaledBitmap(rotated, targetWidth, targetHeight, true).also {
+                        if (it !== rotated) rotated.recycle()
+                    }
                 } else rotated
-                if (scaled !== rotated) rotated.recycle()
 
                 val destination = File(outputDir, "proxy_%05d.jpg".format(index))
                 val written = FileOutputStream(destination).use { output ->
