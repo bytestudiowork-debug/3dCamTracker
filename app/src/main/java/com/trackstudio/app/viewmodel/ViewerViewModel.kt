@@ -28,6 +28,7 @@ import org.opencv.android.Utils
 import org.opencv.core.CvType
 import org.opencv.core.Mat
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -67,6 +68,7 @@ data class ViewerUiState(
     val errorMessage: String? = null,
     val thumbnails: Map<Int, Bitmap> = emptyMap(),
     val isAutoTracking: Boolean = false,
+    val isTrackingPaused: Boolean = false,
     val trackingProgress: CameraTrackingProgress? = null,
     val trackingError: String? = null,
     val trackingSummary: CameraTrackingSummary? = null,
@@ -139,6 +141,7 @@ class ViewerViewModel(
     private var requestJob: Job? = null
     private var thumbnailJob: Job? = null
     private var trackingJob: Job? = null
+    @Volatile private var trackingResumeSignal = CompletableDeferred(Unit)
     private var thumbnailCount = 0
 
     private val frameSource =
@@ -160,6 +163,7 @@ class ViewerViewModel(
         )
 
     fun loadSequence(uris: List<Uri>, fps: Double, sourceUris: List<Uri> = uris, videoUri: Uri? = null, videoFrameCount: Int = uris.size, sourceWidth: Int = 0, sourceHeight: Int = 0, videoRotationDegrees: Int = 0) {
+        resumeAutoTrack()
         trackingJob?.cancel()
         trackingJob = null
         requestJob?.cancel()
@@ -281,6 +285,7 @@ class ViewerViewModel(
 
     fun startAutoTrack() {
         if (_uiState.value.isAutoTracking) return
+        trackingResumeSignal = CompletableDeferred(Unit)
         anchorProjectionContext = null
         val useOriginals = _uiState.value.reconstructionMode == ReconstructionMode.GLOBAL
         val videoUri = sourceVideoUri
@@ -345,7 +350,12 @@ class ViewerViewModel(
                             finally { bitmap.recycle() }
                         }
                     },
-                    onProgress = { progress -> _uiState.update { it.copy(trackingProgress = progress) } }
+                    onProgress = { progress ->
+                        // Pause at solver progress checkpoints; the in-memory solve state
+                        // remains alive while the user lets the device cool down.
+                        trackingResumeSignal.await()
+                        _uiState.update { it.copy(trackingProgress = progress) }
+                    }
                 )
                 // Display every persistent, geometrically verified 2D feature track.
                 // Requiring a successfully triangulated 3D landmark hid all points on
@@ -380,6 +390,7 @@ class ViewerViewModel(
                 _uiState.update { state ->
                     state.copy(
                         isAutoTracking = false,
+                        isTrackingPaused = false,
                         trackingProgress = CameraTrackingProgress(totalFrames, totalFrames, "Camera solve complete", 1f, totalFrames, totalFrames),
                         trackingSummary = CameraTrackingSummary(
                             result.registeredCameraCount,
@@ -413,10 +424,10 @@ class ViewerViewModel(
                 val firstVisibleTrackFrame = pointsByFrame.maxByOrNull { it.value.size }?.key
                 if (firstVisibleTrackFrame != null) seekTo(firstVisibleTrackFrame)
             } catch (cancelled: CancellationException) {
-                _uiState.update { it.copy(isAutoTracking = false) }
+                _uiState.update { it.copy(isAutoTracking = false, isTrackingPaused = false) }
                 throw cancelled
             } catch (failure: Throwable) {
-                _uiState.update { it.copy(isAutoTracking = false, trackingError = failure.message ?: "Camera tracking failed.") }
+                _uiState.update { it.copy(isAutoTracking = false, isTrackingPaused = false, trackingError = failure.message ?: "Camera tracking failed.") }
             } finally {
                 sequentialDecoder?.close()
                 intrinsics?.release()
@@ -425,7 +436,21 @@ class ViewerViewModel(
         }
     }
 
-    fun cancelAutoTrack() { trackingJob?.cancel() }
+    fun pauseAutoTrack() {
+        if (!_uiState.value.isAutoTracking || _uiState.value.isTrackingPaused) return
+        if (trackingResumeSignal.isCompleted) trackingResumeSignal = CompletableDeferred()
+        _uiState.update { it.copy(isTrackingPaused = true) }
+    }
+
+    fun resumeAutoTrack() {
+        trackingResumeSignal.complete(Unit)
+        _uiState.update { it.copy(isTrackingPaused = false) }
+    }
+
+    fun cancelAutoTrack() {
+        resumeAutoTrack()
+        trackingJob?.cancel()
+    }
 
     /**
      * Requests a modest set of evenly spaced preview thumbnails.
