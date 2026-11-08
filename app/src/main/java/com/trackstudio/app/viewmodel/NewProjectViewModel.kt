@@ -90,7 +90,8 @@ class NewProjectViewModel(
                     it.copy(
                         proxySettings =
                             it.proxySettings.copy(
-                                enabled = event.enabled
+                                // Video projects always require their lightweight working copy.
+                                enabled = if (it.isVideoSource) true else event.enabled
                             )
                     )
                 }
