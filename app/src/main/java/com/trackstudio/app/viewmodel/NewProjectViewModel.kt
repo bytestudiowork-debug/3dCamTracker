@@ -183,8 +183,21 @@ class NewProjectViewModel(
                 _uiState.update {
                     it.copy(importPhase = ImportPhase.PROBED, footage = footage,
                         frameRate = info.frameRate,
+                        // Video projects always get a prepared working copy. Select
+                        // the scale from source dimensions, duration, sample count and
+                        // file size; the original URI remains the project source.
+                        proxySettings = it.proxySettings.copy(
+                            enabled = true,
+                            resolution = VideoProxyPolicy.recommendedResolution(
+                                width = info.width,
+                                height = info.height,
+                                durationUs = info.durationUs,
+                                frameCount = info.frameCount,
+                                sizeBytes = info.sizeBytes
+                            )
+                        ),
                         probingProgress = info.frameCount to info.frameCount,
-                        probingCurrentName = "Video ready — frames decode during tracking")
+                        probingCurrentName = "Video ready — proxy is prepared after project creation")
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
