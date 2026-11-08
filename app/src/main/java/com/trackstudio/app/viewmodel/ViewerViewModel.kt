@@ -23,6 +23,10 @@ import com.trackstudio.app.tracking.AnchorWorldPosition
 import com.trackstudio.app.tracking.OpenCvRuntime
 import com.trackstudio.app.data.io.VideoPreviewDecoder
 import com.trackstudio.app.data.io.SequentialVideoFrameDecoder
+import com.trackstudio.app.data.io.VideoProxyGenerator
+import com.trackstudio.app.data.io.ProxyProgress
+import com.trackstudio.app.util.FileUtils
+import java.io.File
 import kotlinx.coroutines.withContext
 import org.opencv.android.Utils
 import org.opencv.core.CvType
@@ -81,7 +85,9 @@ data class ViewerUiState(
     val defaultAnchorX: Double = 0.0,
     val defaultAnchorY: Double = 0.0,
     val defaultAnchorZ: Double = 0.0,
-    val anchorAxisLength: Double = 0.1
+    val anchorAxisLength: Double = 0.1,
+    val proxyGenerationProgress: Pair<Int, Int>? = null,
+    val proxyGenerationError: String? = null
 )
 
 class ViewerViewModel(
@@ -109,6 +115,9 @@ class ViewerViewModel(
     private var sourceVideoRotation: Int = 0
     private var sourceVideoWidth: Int = 0
     private var sourceVideoHeight: Int = 0
+    private var sourceVideoTrackingScale: Float = 1f
+    private var activeProjectId: String = ""
+    private var videoProxyJob: Job? = null
     private var videoPreviewDecoder: VideoPreviewDecoder? = null
     private var anchorProjectionContext: TrackingAnchorContext? = null
 
@@ -162,13 +171,29 @@ class ViewerViewModel(
             }
         )
 
-    fun loadSequence(uris: List<Uri>, fps: Double, sourceUris: List<Uri> = uris, videoUri: Uri? = null, videoFrameCount: Int = uris.size, sourceWidth: Int = 0, sourceHeight: Int = 0, videoRotationDegrees: Int = 0) {
+    fun loadSequence(
+        uris: List<Uri>,
+        fps: Double,
+        sourceUris: List<Uri> = uris,
+        videoUri: Uri? = null,
+        videoFrameCount: Int = uris.size,
+        sourceWidth: Int = 0,
+        sourceHeight: Int = 0,
+        videoRotationDegrees: Int = 0,
+        projectId: String = "",
+        videoTrackingScale: Float = 0.5f,
+        videoProxyQuality: Int = 85
+    ) {
         resumeAutoTrack()
         trackingJob?.cancel()
         trackingJob = null
+        videoProxyJob?.cancel()
+        videoProxyJob = null
         requestJob?.cancel()
         thumbnailJob?.cancel()
         trackingJob?.cancel()
+        videoProxyJob?.cancel()
+        videoProxyJob = null
         playbackController.release()
         inFlight.values.forEach { it.cancel() }
         inFlight.clear()
@@ -182,6 +207,8 @@ class ViewerViewModel(
         sourceVideoRotation = videoRotationDegrees
         sourceVideoWidth = sourceWidth
         sourceVideoHeight = sourceHeight
+        sourceVideoTrackingScale = videoTrackingScale.coerceIn(0.125f, 1f)
+        activeProjectId = projectId
         if (videoUri != null && uris.isEmpty()) videoPreviewDecoder = VideoPreviewDecoder(appContext, videoUri, videoRotationDegrees)
         frameUris = uris.toList()
         trackingFrameUris = sourceUris.toList()
@@ -213,6 +240,82 @@ class ViewerViewModel(
         )
 
         if (frameUris.isNotEmpty() || videoUri != null) showFrame(0)
+
+        // Video projects enter the editor immediately. The proxy cache is built
+        // here in the background; tracking can start from the reduced-resolution
+        // sequential decoder while this optional cache is still being prepared.
+        if (videoUri != null && frameUris.isEmpty() && projectId.isNotBlank()) {
+            startVideoProxyGeneration(
+                videoUri, videoFrameCount, videoRotationDegrees,
+                sourceVideoTrackingScale, videoProxyQuality, projectId
+            )
+        }
+
+        if (projectId.isNotBlank()) {
+            viewModelScope.launch(Dispatchers.IO) {
+                val saved = TrackingResultStore.load(appContext, projectId) ?: return@launch
+                _uiState.update { state ->
+                    state.copy(
+                        trackingSummary = saved.summary,
+                        trackingPointsByFrame = saved.pointsByFrame,
+                        anchorSegmentsByFrame = saved.anchorSegmentsByFrame,
+                        anchorPositionX = saved.anchorX,
+                        anchorPositionY = saved.anchorY,
+                        anchorPositionZ = saved.anchorZ,
+                        defaultAnchorX = saved.defaultAnchorX,
+                        defaultAnchorY = saved.defaultAnchorY,
+                        defaultAnchorZ = saved.defaultAnchorZ,
+                        anchorAxisLength = saved.anchorAxisLength
+                    )
+                }
+            }
+        }
+    }
+
+    private fun startVideoProxyGeneration(
+        uri: Uri,
+        frameCount: Int,
+        rotationDegrees: Int,
+        scale: Float,
+        quality: Int,
+        projectId: String
+    ) {
+        val outputDir = FileUtils.proxyDir(appContext, projectId, "proxy_cache")
+        _uiState.update { it.copy(proxyGenerationProgress = 0 to frameCount, proxyGenerationError = null) }
+        videoProxyJob = viewModelScope.launch {
+            try {
+                VideoProxyGenerator(appContext).generate(
+                    uri, frameCount, rotationDegrees, scale, quality, outputDir
+                ).collect { progress ->
+                    when (progress) {
+                        is ProxyProgress.Generating ->
+                            _uiState.update { it.copy(proxyGenerationProgress = progress.done to progress.total) }
+                        is ProxyProgress.Done -> {
+                            val proxies = (0 until frameCount).map { index ->
+                                Uri.fromFile(File(outputDir, "proxy_%05d.jpg".format(index)))
+                            }
+                            if (proxies.all { File(it.path ?: "").isFile }) {
+                                frameUris = proxies
+                                bitmapCache.evictAll()
+                                frameBytes = 0
+                                videoPreviewDecoder?.close()
+                                videoPreviewDecoder = null
+                                _uiState.update { it.copy(proxyGenerationProgress = null, proxyGenerationError = null) }
+                                showFrame(_uiState.value.playback.currentFrame)
+                            } else {
+                                _uiState.update { it.copy(proxyGenerationProgress = null, proxyGenerationError = "Proxy cache is incomplete; continuing with direct video preview.") }
+                            }
+                        }
+                        is ProxyProgress.Failed ->
+                            _uiState.update { it.copy(proxyGenerationProgress = null, proxyGenerationError = progress.reason) }
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                _uiState.update { it.copy(proxyGenerationProgress = null, proxyGenerationError = failure.message ?: "Video proxy generation failed.") }
+            }
+        }
     }
 
     fun playPause() {
@@ -316,7 +419,8 @@ class ViewerViewModel(
             try {
                 check(OpenCvRuntime.ensureLoaded()) { "OpenCV could not be initialized on this device." }
                 val dimensions = if (videoUri != null && uris.isEmpty()) {
-                    sourceVideoWidth to sourceVideoHeight
+                    ((sourceVideoWidth * sourceVideoTrackingScale).toInt().coerceAtLeast(1)) to
+                        ((sourceVideoHeight * sourceVideoTrackingScale).toInt().coerceAtLeast(1))
                 } else {
                     withContext(Dispatchers.IO) {
                         val bitmap = decodeSampled(uris.first(), decodeLimit, Bitmap.Config.ARGB_8888)
@@ -325,7 +429,7 @@ class ViewerViewModel(
                 }
                 if (videoUri != null && uris.isEmpty()) {
                     sequentialDecoder = withContext(Dispatchers.IO) {
-                        SequentialVideoFrameDecoder(appContext, videoUri, sourceVideoRotation)
+                        SequentialVideoFrameDecoder(appContext, videoUri, sourceVideoRotation, sourceVideoTrackingScale)
                     }
                 }
                 val width = dimensions.first
@@ -390,25 +494,25 @@ class ViewerViewModel(
                 val anchorSegments = anchorContext?.let {
                     TrackingAnchorProjector.project(it, defaultAnchor, defaultAxisLength)
                 }.orEmpty()
-                _uiState.update { state ->
-                    state.copy(
-                        isAutoTracking = false,
+                val completedSummary = CameraTrackingSummary(
+                    result.registeredCameraCount,
+                    result.processedFrames,
+                    result.landmarks.size,
+                    result.inlierRatio,
+                    result.initialPairFrames,
+                    result.landmarks.map { it.meanReprojectionErrorPx }
+                        .filter { it.isFinite() }.average().takeIf { it.isFinite() } ?: 0.0,
+                    result.globalPositioningApplied,
+                    result.globalPositioningInitialCost,
+                    result.globalPositioningFinalCost,
+                    result.globalPositioningIterations,
+                    result.globalPositioningStatus
+                )
+                val completedState = _uiState.value.copy(
+                    isAutoTracking = false,
                         isTrackingPaused = false,
                         trackingProgress = CameraTrackingProgress(totalFrames, totalFrames, "Camera solve complete", 1f, totalFrames, totalFrames),
-                        trackingSummary = CameraTrackingSummary(
-                            result.registeredCameraCount,
-                            result.processedFrames,
-                            result.landmarks.size,
-                            result.inlierRatio,
-                            result.initialPairFrames,
-                            result.landmarks.map { it.meanReprojectionErrorPx }
-                                .filter { it.isFinite() }.average().takeIf { it.isFinite() } ?: 0.0,
-                            result.globalPositioningApplied,
-                            result.globalPositioningInitialCost,
-                            result.globalPositioningFinalCost,
-                            result.globalPositioningIterations,
-                            result.globalPositioningStatus
-                        ),
+                        trackingSummary = completedSummary,
                         trackingPointsByFrame = pointsByFrame,
                         anchorSegmentsByFrame = anchorSegments,
                         anchorPositionX = defaultAnchor.x,
@@ -420,6 +524,26 @@ class ViewerViewModel(
                         anchorAxisLength = defaultAxisLength,
                         trackingError = if (result.registeredCameraCount < 3) "Only ${result.registeredCameraCount} cameras registered. The solve may be incomplete; try footage with stronger parallax." else null
                     )
+                )
+                _uiState.value = completedState
+                if (activeProjectId.isNotBlank()) {
+                    withContext(Dispatchers.IO) {
+                        TrackingResultStore.save(
+                            appContext, activeProjectId,
+                            TrackingResultStore.Snapshot(
+                                pointsByFrame = pointsByFrame,
+                                anchorSegmentsByFrame = anchorSegments,
+                                summary = completedSummary,
+                                anchorX = defaultAnchor.x,
+                                anchorY = defaultAnchor.y,
+                                anchorZ = defaultAnchor.z,
+                                defaultAnchorX = defaultAnchor.x,
+                                defaultAnchorY = defaultAnchor.y,
+                                defaultAnchorZ = defaultAnchor.z,
+                                anchorAxisLength = defaultAxisLength
+                            )
+                        )
+                    }
                 }
                 // The viewer initially opens on frame 0, which can be before the
                 // selected initialization pair. Jump to the frame with the densest

@@ -177,7 +177,8 @@ class VideoPreviewDecoder(
 class SequentialVideoFrameDecoder(
     context: Context,
     uri: Uri,
-    private val rotationDegrees: Int
+    private val rotationDegrees: Int,
+    private val outputScale: Float = 1f
 ) : Closeable {
     private val extractor = MediaExtractor()
     private val decoder: MediaCodec
@@ -231,7 +232,7 @@ class SequentialVideoFrameDecoder(
                     val bitmap = if (info.size > 0) {
                         val image = decoder.getOutputImage(outputIndex)
                             ?: error("This device's decoder cannot expose YUV frames for tracking.")
-                        image.toArgbBitmap()
+                        image.toArgbBitmap(outputScale)
                     } else null
                     decoder.releaseOutputBuffer(outputIndex, false)
                     if (eos) outputEnded = true
@@ -262,7 +263,7 @@ private fun rotateIfNeeded(bitmap: Bitmap, degrees: Int): Bitmap {
     return result
 }
 
-private fun Image.toArgbBitmap(): Bitmap {
+private fun Image.toArgbBitmap(outputScale: Float): Bitmap {
     try {
         val chromaSubsample = when (format) {
             ImageFormat.YUV_420_888 -> 2 to 2
@@ -271,8 +272,11 @@ private fun Image.toArgbBitmap(): Bitmap {
             else -> error("Unsupported decoded video pixel format: $format")
         }
         val crop = cropRect
-        val width = crop.width()
-        val height = crop.height()
+        val sourceWidth = crop.width()
+        val sourceHeight = crop.height()
+        val scale = outputScale.coerceIn(0.125f, 1f)
+        val width = (sourceWidth * scale).toInt().coerceAtLeast(1)
+        val height = (sourceHeight * scale).toInt().coerceAtLeast(1)
         val yPlane = planes[0]
         val uPlane = planes[1]
         val vPlane = planes[2]
@@ -282,9 +286,9 @@ private fun Image.toArgbBitmap(): Bitmap {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val row = IntArray(width)
         for (y in 0 until height) {
-            val sy = crop.top + y
+            val sy = crop.top + (y.toLong() * sourceHeight / height).toInt()
             for (x in 0 until width) {
-                val sx = crop.left + x
+                val sx = crop.left + (x.toLong() * sourceWidth / width).toInt()
                 val yy = yBuffer.get(sy * yPlane.rowStride + sx * yPlane.pixelStride).toInt() and 255
                 val uvx = sx / chromaSubsample.first
                 val uvy = sy / chromaSubsample.second

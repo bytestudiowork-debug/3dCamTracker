@@ -55,9 +55,9 @@ fun ProxyPanel(
     ) {
         Text(
             text = if (state.isVideoSource) {
-                "Video proxies are generated from the source timestamps for smooth preview. Global tracking continues to use the original video at full resolution."
+                "The editor opens immediately. Video proxies are prepared in the background, and tracking uses this reduced working resolution while the original video remains untouched."
             } else {
-                "Image proxies are lightweight preview copies. Original image frames remain unchanged and are used by Global tracking."
+                "Image-sequence import and proxy behaviour are unchanged. Original image frames remain untouched."
             },
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary

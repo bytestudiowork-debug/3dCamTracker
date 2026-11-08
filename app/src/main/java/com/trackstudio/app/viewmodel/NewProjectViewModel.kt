@@ -310,6 +310,18 @@ class NewProjectViewModel(
                     state.colorSpace
             )
 
+        if (videoUri != null) {
+            repository.saveProjectMetadata(settings)
+            completedProjectSettings = settings
+            _uiState.update {
+                it.copy(
+                    creationPhase = CreationPhase.DONE,
+                    proxyWarning = null
+                )
+            }
+            return
+        }
+
         if (!state.proxySettings.enabled) {
 
             repository.saveProjectMetadata(settings)

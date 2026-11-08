@@ -480,6 +480,10 @@ private fun TrackStudioApp() {
                         projectName =
                             project.projectName,
 
+                        projectId = project.id,
+                        videoProxyScale = project.proxy.resolution.scale,
+                        videoProxyQuality = project.proxy.jpegQuality,
+
                         onBack = {
 
                             viewerViewModel

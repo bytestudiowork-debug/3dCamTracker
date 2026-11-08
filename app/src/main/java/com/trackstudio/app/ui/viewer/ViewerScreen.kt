@@ -72,6 +72,9 @@ fun ViewerScreen(
     sourceHeight: Int,
     fps: Double,
     projectName: String,
+    projectId: String,
+    videoProxyScale: Float,
+    videoProxyQuality: Int,
     onBack: () -> Unit
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -79,8 +82,12 @@ fun ViewerScreen(
         mutableStateOf<Bitmap?>(null)
     }
 
-    LaunchedEffect(frameUris, trackingFrameUris, fps, videoUri, videoFrameCount, sourceWidth, sourceHeight, videoRotationDegrees) {
-        viewModel.loadSequence(frameUris, fps, trackingFrameUris, videoUri, videoFrameCount, sourceWidth, sourceHeight, videoRotationDegrees)
+    LaunchedEffect(frameUris, trackingFrameUris, fps, videoUri, videoFrameCount, sourceWidth, sourceHeight, videoRotationDegrees, projectId, videoProxyScale, videoProxyQuality) {
+        viewModel.loadSequence(
+            frameUris, fps, trackingFrameUris, videoUri, videoFrameCount,
+            sourceWidth, sourceHeight, videoRotationDegrees,
+            projectId, videoProxyScale, videoProxyQuality
+        )
     }
 
     LaunchedEffect(state.currentBitmap) {
@@ -258,6 +265,22 @@ fun ViewerScreen(
                 }
             }
 
+        }
+
+        state.proxyGenerationProgress?.let { progress ->
+            val fraction = if (progress.second <= 0) 0f else
+                (progress.first.toFloat() / progress.second).coerceIn(0f, 1f)
+            Box(
+                Modifier.align(Alignment.TopCenter)
+                    .padding(top = 8.dp)
+                    .background(PanelBackground.copy(alpha = 0.94f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 7.dp)
+            ) {
+                Text(
+                    "Preparing video proxies · ${progress.first}/${progress.second} · ${(fraction * 100).toInt()}%",
+                    color = TextSecondary, fontSize = 11.sp
+                )
+            }
         }
 
         if (activeToolPopup != null) {
