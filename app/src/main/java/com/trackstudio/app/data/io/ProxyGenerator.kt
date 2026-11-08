@@ -24,6 +24,10 @@ class ProxyGenerator(
 ) {
     fun generate(footage: FootageInfo, scale: Float, jpegQuality: Int, outputDir: File): Flow<ProxyProgress> = flow {
         if (!outputDir.exists()) check(outputDir.mkdirs()) { "Could not create proxy directory." }
+        // Clear stale output so incomplete retries cannot masquerade as a valid cache.
+        outputDir.listFiles()
+            ?.filter { it.isFile && it.name.startsWith("proxy_") && it.name.endsWith(".jpg") }
+            ?.forEach { check(it.delete()) { "Could not clear an old proxy frame: ${it.name}" } }
         var failures = 0
         footage.frames.forEachIndexed { index, frame ->
             emit(ProxyProgress.Generating(index, footage.frames.size))
@@ -48,6 +52,9 @@ class ProxyGenerator(
             yield()
         }
         if (failures > 0) {
+            outputDir.listFiles()
+                ?.filter { it.isFile && it.name.startsWith("proxy_") && it.name.endsWith(".jpg") }
+                ?.forEach { it.delete() }
             emit(ProxyProgress.Failed("$failures of ${footage.frames.size} proxies could not be generated. Original frames remain available."))
         } else {
             emit(ProxyProgress.Done(outputDir))

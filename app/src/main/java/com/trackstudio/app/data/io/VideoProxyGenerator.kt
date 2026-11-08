@@ -6,6 +6,7 @@ import android.graphics.Matrix
 import android.media.MediaExtractor
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -55,6 +56,10 @@ class VideoProxyGenerator(private val context: Context) {
 
             setRetrieverDataSource(context, uri, retriever)
             if (!outputDir.exists()) check(outputDir.mkdirs()) { "Could not create proxy directory." }
+            // Clear stale output so incomplete retries cannot masquerade as a valid cache.
+            outputDir.listFiles()
+                ?.filter { it.isFile && it.name.startsWith("proxy_") && it.name.endsWith(".jpg") }
+                ?.forEach { check(it.delete()) { "Could not clear an old proxy frame: ${it.name}" } }
             val proxyScale = scale.coerceIn(0.1f, 1f)
             val quality = jpegQuality.coerceIn(40, 100)
 
@@ -83,7 +88,15 @@ class VideoProxyGenerator(private val context: Context) {
                 yield()
             }
             emit(ProxyProgress.Done(outputDir))
+        } catch (cancelled: CancellationException) {
+            outputDir.listFiles()
+                ?.filter { it.isFile && it.name.startsWith("proxy_") && it.name.endsWith(".jpg") }
+                ?.forEach { it.delete() }
+            throw cancelled
         } catch (error: Exception) {
+            outputDir.listFiles()
+                ?.filter { it.isFile && it.name.startsWith("proxy_") && it.name.endsWith(".jpg") }
+                ?.forEach { it.delete() }
             emit(ProxyProgress.Failed(error.message ?: "Video proxy generation failed."))
         } finally {
             runCatching { retriever.release() }

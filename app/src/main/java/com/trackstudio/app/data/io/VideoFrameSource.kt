@@ -21,12 +21,17 @@ import kotlin.math.max
  * but expose the same content through an AssetFileDescriptor. */
 internal fun setExtractorDataSource(context: Context, uri: Uri, extractor: MediaExtractor) {
     try {
-        setExtractorDataSource(context, uri, extractor)
+        extractor.setDataSource(context, uri, null)
     } catch (first: Exception) {
         val descriptor = context.contentResolver.openAssetFileDescriptor(uri, "r") ?: throw first
         descriptor.use {
-            if (it.length >= 0L) extractor.setDataSource(it.fileDescriptor, it.startOffset, it.length)
-            else extractor.setDataSource(it.fileDescriptor)
+            try {
+                if (it.length >= 0L) extractor.setDataSource(it.fileDescriptor, it.startOffset, it.length)
+                else extractor.setDataSource(it.fileDescriptor)
+            } catch (fallback: Exception) {
+                fallback.addSuppressed(first)
+                throw fallback
+            }
         }
     }
 }
