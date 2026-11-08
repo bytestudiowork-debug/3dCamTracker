@@ -19,7 +19,9 @@ import java.io.FileOutputStream
 /**
  * Builds the same numbered JPEG proxy sequence used by image projects, but
  * decodes each video presentation timestamp from the original source. This
- * output is only for editor playback; Global tracking still reads the source.
+ * output is used for editor playback and as the lower-resolution video tracking
+ * working set. The original SAF video remains untouched and is retained as the
+ * project source for relinking or regenerating proxies.
  */
 class VideoProxyGenerator(private val context: Context) {
     fun generate(
