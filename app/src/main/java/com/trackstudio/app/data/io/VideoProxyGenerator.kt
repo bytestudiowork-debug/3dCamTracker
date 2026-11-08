@@ -63,6 +63,16 @@ class VideoProxyGenerator(private val context: Context) {
                 ?.forEach { check(it.delete()) { "Could not clear an old proxy frame: ${it.name}" } }
             val proxyScale = scale.coerceIn(0.1f, 1f)
             val quality = jpegQuality.coerceIn(40, 100)
+            // Resolve target dimensions once; metadata access per frame is expensive.
+            val sourceWidth = runCatching { retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toInt() }
+                .getOrNull()?.coerceAtLeast(1) ?: 1
+            val sourceHeight = runCatching { retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toInt() }
+                .getOrNull()?.coerceAtLeast(1) ?: 1
+            val rotatedSource = rotationDegrees % 180 != 0
+            val orientedWidth = if (rotatedSource) sourceHeight else sourceWidth
+            val orientedHeight = if (rotatedSource) sourceWidth else sourceHeight
+            val targetWidth = (orientedWidth * proxyScale).toInt().coerceAtLeast(1)
+            val targetHeight = (orientedHeight * proxyScale).toInt().coerceAtLeast(1)
 
             for (index in 0 until frameCount) {
                 emit(ProxyProgress.Generating(index, frameCount))
@@ -70,15 +80,6 @@ class VideoProxyGenerator(private val context: Context) {
                 // this avoids allocating a full-resolution Bitmap only to throw most
                 // of its pixels away during a second resize. Older devices retain the
                 // compatible full-decode + resize fallback.
-                val sourceWidth = runCatching { retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toInt() }
-                    .getOrNull()?.coerceAtLeast(1) ?: 1
-                val sourceHeight = runCatching { retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toInt() }
-                    .getOrNull()?.coerceAtLeast(1) ?: 1
-                val rotatedSource = rotationDegrees % 180 != 0
-                val orientedWidth = if (rotatedSource) sourceHeight else sourceWidth
-                val orientedHeight = if (rotatedSource) sourceWidth else sourceHeight
-                val targetWidth = (orientedWidth * proxyScale).toInt().coerceAtLeast(1)
-                val targetHeight = (orientedHeight * proxyScale).toInt().coerceAtLeast(1)
                 val decoded = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1 && proxyScale < 0.999f) {
                     retriever.getScaledFrameAtTime(
                         timestamps[index],
