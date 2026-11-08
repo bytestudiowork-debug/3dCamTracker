@@ -11,6 +11,7 @@ import com.trackstudio.app.data.io.ProxyGenerator
 import com.trackstudio.app.data.io.ProxyProgress
 import com.trackstudio.app.data.io.VideoSourceProbe
 import com.trackstudio.app.data.io.VideoProxyGenerator
+import com.trackstudio.app.data.io.VideoProxyPolicy
 import com.trackstudio.app.data.model.ProjectSettings
 import com.trackstudio.app.data.repository.ProjectRepository
 import com.trackstudio.app.util.FileUtils
