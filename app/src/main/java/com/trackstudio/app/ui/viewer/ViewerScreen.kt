@@ -202,6 +202,7 @@ fun ViewerScreen(
                             fps = state.playback.fps,
                             frameCount = state.playback.frameCount,
                             isAutoTracking = state.isAutoTracking,
+                            isTrackingPaused = state.isTrackingPaused,
                             trackingProgress = state.trackingProgress,
                             trackingError = state.trackingError,
                             trackingSummary = state.trackingSummary,
@@ -209,6 +210,7 @@ fun ViewerScreen(
                             onReconstructionModeChanged = viewModel::setReconstructionMode,
                             onAutoTrack = viewModel::startAutoTrack,
                             onCancelAutoTrack = viewModel::cancelAutoTrack,
+                            onToggleTrackingPause = { if (state.isTrackingPaused) viewModel.resumeAutoTrack() else viewModel.pauseAutoTrack() },
                             onOpen3DTest = { activeToolPopup = "Anchor" },
                             onOpenTrackerTools = { activeToolPopup = "Tracker Tools" },
                             modifier = Modifier
@@ -233,6 +235,7 @@ fun ViewerScreen(
                         fps = state.playback.fps,
                         frameCount = state.playback.frameCount,
                         isAutoTracking = state.isAutoTracking,
+                        isTrackingPaused = state.isTrackingPaused,
                         trackingProgress = state.trackingProgress,
                         trackingError = state.trackingError,
                         trackingSummary = state.trackingSummary,
@@ -240,6 +243,7 @@ fun ViewerScreen(
                             onReconstructionModeChanged = viewModel::setReconstructionMode,
                         onAutoTrack = viewModel::startAutoTrack,
                         onCancelAutoTrack = viewModel::cancelAutoTrack,
+                        onToggleTrackingPause = { if (state.isTrackingPaused) viewModel.resumeAutoTrack() else viewModel.pauseAutoTrack() },
                         onOpen3DTest = { activeToolPopup = "Anchor" },
                         onOpenTrackerTools = { activeToolPopup = "Tracker Tools" },
                         modifier = Modifier
