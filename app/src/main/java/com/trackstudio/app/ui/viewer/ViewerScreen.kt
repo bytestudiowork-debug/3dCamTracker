@@ -159,8 +159,10 @@ fun ViewerScreen(
                             bitmap = state.currentBitmap,
                             trackingPoints = state.trackingPointsByFrame[state.playback.currentFrame].orEmpty(),
                             anchorSegments = if (showAnchorOverlay) state.anchorSegmentsByFrame[state.playback.currentFrame].orEmpty() else emptyList(),
-                            trackingCoordinateWidth = if (state.reconstructionMode == ReconstructionMode.GLOBAL) sourceWidth else 0,
-                            trackingCoordinateHeight = if (state.reconstructionMode == ReconstructionMode.GLOBAL) sourceHeight else 0,
+                            // Tracking coordinates come from the active working frame.
+                            // For video this is the half/quarter proxy, not source resolution.
+                            trackingCoordinateWidth = if (state.reconstructionMode == ReconstructionMode.GLOBAL) (state.currentBitmap?.width ?: sourceWidth) else 0,
+                            trackingCoordinateHeight = if (state.reconstructionMode == ReconstructionMode.GLOBAL) (state.currentBitmap?.height ?: sourceHeight) else 0,
                             showTrackPointsOverlay = showTrackPointsOverlay,
                             markerColorArgb = markerColorArgb,
                             markerSizeDp = markerSizeDp,
