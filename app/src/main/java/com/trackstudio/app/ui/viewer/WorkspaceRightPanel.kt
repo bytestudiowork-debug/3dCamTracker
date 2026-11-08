@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.DeleteOutline
@@ -74,6 +75,7 @@ fun WorkspaceRightPanel(
     fps: Double,
     frameCount: Int,
     isAutoTracking: Boolean,
+    isTrackingPaused: Boolean,
     trackingProgress: CameraTrackingProgress?,
     trackingError: String?,
     trackingSummary: CameraTrackingSummary?,
@@ -81,6 +83,7 @@ fun WorkspaceRightPanel(
     onReconstructionModeChanged: (ReconstructionMode) -> Unit,
     onAutoTrack: () -> Unit,
     onCancelAutoTrack: () -> Unit,
+    onToggleTrackingPause: () -> Unit,
     onOpen3DTest: () -> Unit,
     onOpenTrackerTools: () -> Unit,
     modifier: Modifier = Modifier
@@ -124,7 +127,7 @@ fun WorkspaceRightPanel(
         }
 
         when (selectedTab) {
-            "Tracking" -> TrackingToolsCard(isAutoTracking, trackingProgress, trackingError, trackingSummary, reconstructionMode, onReconstructionModeChanged, onAutoTrack, onCancelAutoTrack)
+            "Tracking" -> TrackingToolsCard(isAutoTracking, isTrackingPaused, trackingProgress, trackingError, trackingSummary, reconstructionMode, onReconstructionModeChanged, onAutoTrack, onCancelAutoTrack, onToggleTrackingPause)
             "Tools" -> QuickActionsCard(onOpen3DTest, onOpenTrackerTools)
             else -> ProjectSummaryCard(projectName, fps, frameCount)
         }
@@ -218,13 +221,15 @@ private fun ProjectDetailRow(label: String, value: String) {
 @Composable
 private fun TrackingToolsCard(
     isAutoTracking: Boolean,
+    isTrackingPaused: Boolean,
     progress: CameraTrackingProgress?,
     error: String?,
     summary: CameraTrackingSummary?,
     reconstructionMode: ReconstructionMode,
     onReconstructionModeChanged: (ReconstructionMode) -> Unit,
     onAutoTrack: () -> Unit,
-    onCancelAutoTrack: () -> Unit
+    onCancelAutoTrack: () -> Unit,
+    onToggleTrackingPause: () -> Unit
 ) {
     var detailsExpanded by remember { mutableStateOf(false) }
     PanelCard(modifier = Modifier.fillMaxWidth()) {
@@ -272,7 +277,19 @@ private fun TrackingToolsCard(
                     }
                 }
             }
-            if (isAutoTracking) ChromeButton(text = "Cancel Tracking", icon = Icons.Filled.Stop, onClick = onCancelAutoTrack, modifier = Modifier.fillMaxWidth(), height = 40.dp)
+            if (isAutoTracking) {
+                ChromeButton(
+                    text = if (isTrackingPaused) "Resume Tracking" else "Pause Tracking",
+                    icon = if (isTrackingPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                    onClick = onToggleTrackingPause,
+                    modifier = Modifier.fillMaxWidth(),
+                    height = 40.dp
+                )
+                ChromeButton(text = "Cancel Tracking", icon = Icons.Filled.Stop, onClick = onCancelAutoTrack, modifier = Modifier.fillMaxWidth(), height = 40.dp)
+                if (isTrackingPaused) {
+                    Text("Paused at a solver checkpoint. Keep the app open; progress remains in memory.", color = TextSecondary, fontSize = 10.sp)
+                }
+            }
             if (error != null) Text(error, color = AccentError, fontSize = 11.sp)
             if (summary != null) {
                 Text("${summary.registeredCameras}/${summary.totalFrames} cameras registered · ${summary.landmarkCount} 3D points", color = TextPrimary, fontSize = 11.sp)
