@@ -429,7 +429,7 @@ private fun QuickActionsCard(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            ToolEntry("3D Test", "Preview the solved-camera diagnostic cube", Icons.Outlined.ViewInAr, onOpen3DTest)
+            ToolEntry("Anchor", "Set a world-space XYZ anchor and coordinate axes", Icons.Outlined.GpsFixed, onOpen3DTest)
             ToolEntry("Tracker Tools", "Inspect feature tracks and overlay visibility", Icons.Outlined.ScatterPlot, onOpenTrackerTools)
         }
     }

@@ -61,7 +61,8 @@ class MainActivity : ComponentActivity() {
         window.decorView.setOnSystemUiVisibilityChangeListener { visibility ->
             val requiredFlags =
                 View.SYSTEM_UI_FLAG_FULLSCREEN or
-                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
 
             if (visibility and requiredFlags != requiredFlags) {
                 hideSystemBars()
@@ -94,6 +95,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun hideSystemBars() {
+        val immersiveFlags =
+            View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+
+        window.decorView.systemUiVisibility = immersiveFlags
         WindowInsetsControllerCompat(window, window.decorView).apply {
             systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE

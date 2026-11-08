@@ -16,8 +16,10 @@ import com.trackstudio.app.tracking.GlobalReconstructionEngine
 import com.trackstudio.app.tracking.ReconstructionMode
 import com.trackstudio.app.tracking.ReconstructionEngine
 import com.trackstudio.app.tracking.CameraTrackingProgress
-import com.trackstudio.app.tracking.TrackingVerificationProjector
-import com.trackstudio.app.tracking.TrackingVerificationSegment
+import com.trackstudio.app.tracking.TrackingAnchorProjector
+import com.trackstudio.app.tracking.TrackingAnchorSegment
+import com.trackstudio.app.tracking.TrackingAnchorContext
+import com.trackstudio.app.tracking.AnchorWorldPosition
 import com.trackstudio.app.tracking.OpenCvRuntime
 import com.trackstudio.app.data.io.VideoPreviewDecoder
 import com.trackstudio.app.data.io.SequentialVideoFrameDecoder
@@ -70,7 +72,14 @@ data class ViewerUiState(
     val trackingSummary: CameraTrackingSummary? = null,
     val reconstructionMode: ReconstructionMode = ReconstructionMode.CUSTOM,
     val trackingPointsByFrame: Map<Int, List<com.trackstudio.app.tracking.CameraFeatureObservation>> = emptyMap(),
-    val trackingVerificationByFrame: Map<Int, List<TrackingVerificationSegment>> = emptyMap()
+    val anchorSegmentsByFrame: Map<Int, List<TrackingAnchorSegment>> = emptyMap(),
+    val anchorPositionX: Double = 0.0,
+    val anchorPositionY: Double = 0.0,
+    val anchorPositionZ: Double = 0.0,
+    val defaultAnchorX: Double = 0.0,
+    val defaultAnchorY: Double = 0.0,
+    val defaultAnchorZ: Double = 0.0,
+    val anchorAxisLength: Double = 0.1
 )
 
 class ViewerViewModel(
@@ -99,6 +108,7 @@ class ViewerViewModel(
     private var sourceVideoWidth: Int = 0
     private var sourceVideoHeight: Int = 0
     private var videoPreviewDecoder: VideoPreviewDecoder? = null
+    private var anchorProjectionContext: TrackingAnchorContext? = null
 
     private val maxHeapMb =
         Runtime.getRuntime().maxMemory() / (1024L * 1024L)
@@ -162,12 +172,13 @@ class ViewerViewModel(
         sequenceGeneration++
         videoPreviewDecoder?.close()
         videoPreviewDecoder = null
+        anchorProjectionContext = null
         sourceVideoUri = videoUri
         sourceVideoFrameCount = if (videoUri != null) videoFrameCount else 0
         sourceVideoRotation = videoRotationDegrees
         sourceVideoWidth = sourceWidth
         sourceVideoHeight = sourceHeight
-        if (videoUri != null) videoPreviewDecoder = VideoPreviewDecoder(appContext, videoUri, videoRotationDegrees)
+        if (videoUri != null && uris.isEmpty()) videoPreviewDecoder = VideoPreviewDecoder(appContext, videoUri, videoRotationDegrees)
         frameUris = uris.toList()
         trackingFrameUris = sourceUris.toList()
         bitmapCache.evictAll()
@@ -224,8 +235,35 @@ class ViewerViewModel(
         _uiState.update { it.copy(errorMessage = null, trackingError = null) }
     }
 
+    fun setAnchorPosition(x: Double, y: Double, z: Double) {
+        if (!x.isFinite() || !y.isFinite() || !z.isFinite()) return
+        val context = anchorProjectionContext
+        val axisLength = _uiState.value.anchorAxisLength
+        val segments = context?.let {
+            TrackingAnchorProjector.project(it, AnchorWorldPosition(x, y, z), axisLength)
+        }.orEmpty()
+        _uiState.update {
+            it.copy(anchorPositionX = x, anchorPositionY = y, anchorPositionZ = z, anchorSegmentsByFrame = segments)
+        }
+    }
+
+    fun setAnchorAxisLength(length: Double) {
+        if (!length.isFinite() || length <= 0.0) return
+        val state = _uiState.value
+        val segments = anchorProjectionContext?.let {
+            TrackingAnchorProjector.project(it, AnchorWorldPosition(state.anchorPositionX, state.anchorPositionY, state.anchorPositionZ), length)
+        }.orEmpty()
+        _uiState.update { it.copy(anchorAxisLength = length, anchorSegmentsByFrame = segments) }
+    }
+
+    fun resetAnchorPosition() {
+        val state = _uiState.value
+        setAnchorPosition(state.defaultAnchorX, state.defaultAnchorY, state.defaultAnchorZ)
+    }
+
     fun setReconstructionMode(mode: ReconstructionMode) {
         if (_uiState.value.isAutoTracking) return
+        anchorProjectionContext = null
         reconstructionEngine = when (mode) {
             ReconstructionMode.CUSTOM -> customEngine
             ReconstructionMode.GLOBAL -> GlobalReconstructionEngine()
@@ -236,13 +274,14 @@ class ViewerViewModel(
                 trackingSummary = null,
                 trackingError = null,
                 trackingPointsByFrame = emptyMap(),
-                trackingVerificationByFrame = emptyMap()
+                anchorSegmentsByFrame = emptyMap()
             )
         }
     }
 
     fun startAutoTrack() {
         if (_uiState.value.isAutoTracking) return
+        anchorProjectionContext = null
         val useOriginals = _uiState.value.reconstructionMode == ReconstructionMode.GLOBAL
         val videoUri = sourceVideoUri
         if (videoUri != null && !useOriginals) {
@@ -262,7 +301,7 @@ class ViewerViewModel(
         }
         playbackController.pause()
         trackingJob?.cancel()
-        _uiState.update { it.copy(isAutoTracking = true, trackingProgress = CameraTrackingProgress(0, totalFrames, "Preparing footage", 0f, 0, totalFrames), trackingError = null, trackingSummary = null, trackingPointsByFrame = emptyMap(), trackingVerificationByFrame = emptyMap()) }
+        _uiState.update { it.copy(isAutoTracking = true, trackingProgress = CameraTrackingProgress(0, totalFrames, "Preparing footage", 0f, 0, totalFrames), trackingError = null, trackingSummary = null, trackingPointsByFrame = emptyMap(), anchorSegmentsByFrame = emptyMap()) }
         trackingJob = viewModelScope.launch {
             var intrinsics: Mat? = null
             var sequentialDecoder: SequentialVideoFrameDecoder? = null
@@ -325,13 +364,19 @@ class ViewerViewModel(
                             index % ((observations.size + MAX_TRACKING_OVERLAY_POINTS - 1) / MAX_TRACKING_OVERLAY_POINTS) == 0
                         }.take(MAX_TRACKING_OVERLAY_POINTS)
                     }
-                val verificationByFrame = TrackingVerificationProjector.project(
+                val anchorContext = TrackingAnchorProjector.createContext(
                     landmarks = result.landmarks,
                     poses = result.poses,
                     cameraMatrix = cameraMatrix,
                     imageWidth = width,
                     imageHeight = height
                 )
+                anchorProjectionContext = anchorContext
+                val defaultAnchor = anchorContext?.defaultPosition ?: AnchorWorldPosition(0.0, 0.0, 0.0)
+                val defaultAxisLength = anchorContext?.recommendedAxisLength ?: 0.1
+                val anchorSegments = anchorContext?.let {
+                    TrackingAnchorProjector.project(it, defaultAnchor, defaultAxisLength)
+                }.orEmpty()
                 _uiState.update { state ->
                     state.copy(
                         isAutoTracking = false,
@@ -351,7 +396,14 @@ class ViewerViewModel(
                             result.globalPositioningStatus
                         ),
                         trackingPointsByFrame = pointsByFrame,
-                        trackingVerificationByFrame = verificationByFrame,
+                        anchorSegmentsByFrame = anchorSegments,
+                        anchorPositionX = defaultAnchor.x,
+                        anchorPositionY = defaultAnchor.y,
+                        anchorPositionZ = defaultAnchor.z,
+                        defaultAnchorX = defaultAnchor.x,
+                        defaultAnchorY = defaultAnchor.y,
+                        defaultAnchorZ = defaultAnchor.z,
+                        anchorAxisLength = defaultAxisLength,
                         trackingError = if (result.registeredCameraCount < 3) "Only ${result.registeredCameraCount} cameras registered. The solve may be incomplete; try footage with stronger parallax." else null
                     )
                 }
@@ -526,7 +578,7 @@ class ViewerViewModel(
                     throw CancellationException("Frame $index no longer needed")
                 }
 
-                if (sourceVideoUri != null) {
+                if (sourceVideoUri != null && frameUris.isEmpty()) {
                     requireNotNull(videoPreviewDecoder).frameAt(
                         index, _uiState.value.playback.fps, maxDecodeDimension
                     )

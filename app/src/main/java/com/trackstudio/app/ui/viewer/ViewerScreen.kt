@@ -56,7 +56,7 @@ import com.trackstudio.app.ui.theme.PanelBorder
 import com.trackstudio.app.ui.theme.TextPrimary
 import com.trackstudio.app.ui.theme.TextSecondary
 import com.trackstudio.app.ui.theme.ViewerBackground
-import com.trackstudio.app.tracking.TrackingVerificationSegment
+import com.trackstudio.app.tracking.TrackingAnchorSegment
 import com.trackstudio.app.tracking.ReconstructionMode
 import com.trackstudio.app.viewmodel.ViewerViewModel
 
@@ -104,18 +104,12 @@ fun ViewerScreen(
     var zoom by remember { mutableFloatStateOf(1f) }
     var fullscreen by remember { mutableStateOf(false) }
     var panelOpen by remember { mutableStateOf(true) }
-    var showVerificationOverlay by remember { mutableStateOf(false) }
     var showTrackPointsOverlay by remember { mutableStateOf(true) }
     var markerColorArgb by remember { mutableIntStateOf(0xFF00E5FF.toInt()) }
     var markerSizeDp by remember { mutableFloatStateOf(3f) }
     var markerOutline by remember { mutableStateOf(true) }
-    var cubeColorArgb by remember { mutableIntStateOf(0xFF00E5FF.toInt()) }
-    var cubeRotationX by remember { mutableFloatStateOf(0f) }
-    var cubeRotationY by remember { mutableFloatStateOf(0f) }
-    var cubeRotationZ by remember { mutableFloatStateOf(0f) }
-    var cubeScale by remember { mutableFloatStateOf(1f) }
-    var cubeSize by remember { mutableFloatStateOf(1f) }
-    var cubeLineWidth by remember { mutableFloatStateOf(1.8f) }
+    var showAnchorOverlay by remember { mutableStateOf(true) }
+    var anchorLineWidthDp by remember { mutableFloatStateOf(2.2f) }
     var activeToolPopup by remember { mutableStateOf<String?>(null) }
 
     BoxWithConstraints(
@@ -164,21 +158,14 @@ fun ViewerScreen(
                         ViewerPanel(
                             bitmap = state.currentBitmap,
                             trackingPoints = state.trackingPointsByFrame[state.playback.currentFrame].orEmpty(),
-                            verificationSegments = state.trackingVerificationByFrame[state.playback.currentFrame].orEmpty(),
+                            anchorSegments = if (showAnchorOverlay) state.anchorSegmentsByFrame[state.playback.currentFrame].orEmpty() else emptyList(),
                             trackingCoordinateWidth = if (state.reconstructionMode == ReconstructionMode.GLOBAL) sourceWidth else 0,
                             trackingCoordinateHeight = if (state.reconstructionMode == ReconstructionMode.GLOBAL) sourceHeight else 0,
-                            showVerificationOverlay = showVerificationOverlay,
                             showTrackPointsOverlay = showTrackPointsOverlay,
                             markerColorArgb = markerColorArgb,
                             markerSizeDp = markerSizeDp,
                             markerOutline = markerOutline,
-                            cubeColorArgb = cubeColorArgb,
-                            cubeRotationX = cubeRotationX,
-                            cubeRotationY = cubeRotationY,
-                            cubeRotationZ = cubeRotationZ,
-                            cubeScale = cubeScale,
-                            cubeSize = cubeSize,
-                            cubeLineWidth = cubeLineWidth,
+                            anchorLineWidthDp = anchorLineWidthDp,
                             isLoading = state.isLoadingFrame,
                             errorMessage = state.errorMessage,
                             zoom = zoom,
@@ -222,7 +209,7 @@ fun ViewerScreen(
                             onReconstructionModeChanged = viewModel::setReconstructionMode,
                             onAutoTrack = viewModel::startAutoTrack,
                             onCancelAutoTrack = viewModel::cancelAutoTrack,
-                            onOpen3DTest = { activeToolPopup = "3D Test" },
+                            onOpen3DTest = { activeToolPopup = "Anchor" },
                             onOpenTrackerTools = { activeToolPopup = "Tracker Tools" },
                             modifier = Modifier
                                 .width(panelWidth)
@@ -253,7 +240,7 @@ fun ViewerScreen(
                             onReconstructionModeChanged = viewModel::setReconstructionMode,
                         onAutoTrack = viewModel::startAutoTrack,
                         onCancelAutoTrack = viewModel::cancelAutoTrack,
-                        onOpen3DTest = { activeToolPopup = "3D Test" },
+                        onOpen3DTest = { activeToolPopup = "Anchor" },
                         onOpenTrackerTools = { activeToolPopup = "Tracker Tools" },
                         modifier = Modifier
                             .align(Alignment.CenterEnd)
@@ -273,30 +260,28 @@ fun ViewerScreen(
                 currentFrame = state.playback.currentFrame + 1,
                 frameCount = state.playback.frameCount,
                 trackPointCount = state.trackingPointsByFrame[state.playback.currentFrame].orEmpty().size,
-                verificationLineCount = state.trackingVerificationByFrame[state.playback.currentFrame].orEmpty().size,
-                showCube = showVerificationOverlay,
+                anchorSegmentCount = state.anchorSegmentsByFrame[state.playback.currentFrame].orEmpty().size,
+                showAnchor = showAnchorOverlay,
+                anchorX = state.anchorPositionX,
+                anchorY = state.anchorPositionY,
+                anchorZ = state.anchorPositionZ,
+                defaultAnchorX = state.defaultAnchorX,
+                defaultAnchorY = state.defaultAnchorY,
+                defaultAnchorZ = state.defaultAnchorZ,
+                anchorAxisLength = state.anchorAxisLength,
+                anchorLineWidthDp = anchorLineWidthDp,
+                onAnchorChanged = { showAnchorOverlay = it },
+                onAnchorPositionChanged = viewModel::setAnchorPosition,
+                onAnchorAxisLengthChanged = viewModel::setAnchorAxisLength,
+                onAnchorLineWidthChanged = { anchorLineWidthDp = it },
+                onResetAnchor = viewModel::resetAnchorPosition,
                 showTracks = showTrackPointsOverlay,
                 markerColorArgb = markerColorArgb,
                 markerSizeDp = markerSizeDp,
                 markerOutline = markerOutline,
-                cubeColorArgb = cubeColorArgb,
-                cubeRotationX = cubeRotationX,
-                cubeRotationY = cubeRotationY,
-                cubeRotationZ = cubeRotationZ,
-                cubeScale = cubeScale,
-                cubeSize = cubeSize,
-                cubeLineWidth = cubeLineWidth,
-                onCubeColorChanged = { cubeColorArgb = it },
-                onCubeRotationXChanged = { cubeRotationX = it },
-                onCubeRotationYChanged = { cubeRotationY = it },
-                onCubeRotationZChanged = { cubeRotationZ = it },
-                onCubeScaleChanged = { cubeScale = it },
-                onCubeSizeChanged = { cubeSize = it },
-                onCubeLineWidthChanged = { cubeLineWidth = it },
                 onMarkerColorChanged = { markerColorArgb = it },
                 onMarkerSizeChanged = { markerSizeDp = it },
                 onMarkerOutlineChanged = { markerOutline = it },
-                onCubeChanged = { showVerificationOverlay = it },
                 onTracksChanged = { showTrackPointsOverlay = it },
                 onDismiss = { activeToolPopup = null }
             )
@@ -308,21 +293,14 @@ fun ViewerScreen(
 private fun ViewerPanel(
     bitmap: Bitmap?,
     trackingPoints: List<com.trackstudio.app.tracking.CameraFeatureObservation>,
-    verificationSegments: List<TrackingVerificationSegment>,
+    anchorSegments: List<TrackingAnchorSegment>,
     trackingCoordinateWidth: Int,
     trackingCoordinateHeight: Int,
-    showVerificationOverlay: Boolean,
     showTrackPointsOverlay: Boolean,
     markerColorArgb: Int,
     markerSizeDp: Float,
     markerOutline: Boolean,
-    cubeColorArgb: Int,
-    cubeRotationX: Float,
-    cubeRotationY: Float,
-    cubeRotationZ: Float,
-    cubeScale: Float,
-    cubeSize: Float,
-    cubeLineWidth: Float,
+    anchorLineWidthDp: Float,
     isLoading: Boolean,
     errorMessage: String?,
     zoom: Float,
@@ -353,16 +331,10 @@ private fun ViewerPanel(
             trackingPointColor = Color(markerColorArgb.toLong() and 0xFFFFFFFFL),
             trackingPointSizeDp = markerSizeDp,
             trackingPointOutline = markerOutline,
-            trackingVerificationSegments = if (showVerificationOverlay) verificationSegments else emptyList(),
+            anchorSegments = anchorSegments,
             trackingCoordinateWidth = trackingCoordinateWidth,
             trackingCoordinateHeight = trackingCoordinateHeight,
-            verificationColor = Color(cubeColorArgb.toLong() and 0xFFFFFFFFL),
-            verificationRotationX = cubeRotationX,
-            verificationRotationY = cubeRotationY,
-            verificationRotationZ = cubeRotationZ,
-            verificationScale = cubeScale,
-            verificationSize = cubeSize,
-            verificationStrokeDp = cubeLineWidth,
+            anchorStrokeDp = anchorLineWidthDp,
             isLoading = isLoading,
             requestedZoom = zoom,
             onZoomChanged = onZoomChanged,

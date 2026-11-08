@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalDensity
 import com.trackstudio.app.tracking.CameraFeatureObservation
-import com.trackstudio.app.tracking.TrackingVerificationSegment
+import com.trackstudio.app.tracking.TrackingAnchorSegment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import com.trackstudio.app.ui.theme.PanelSurface
 import com.trackstudio.app.ui.theme.TextSecondary
@@ -58,16 +58,10 @@ fun ViewerCanvas(
     trackingPointColor: Color = Color(0xFF00E5FF),
     trackingPointSizeDp: Float = 3f,
     trackingPointOutline: Boolean = true,
-    trackingVerificationSegments: List<TrackingVerificationSegment> = emptyList(),
+    anchorSegments: List<TrackingAnchorSegment> = emptyList(),
     trackingCoordinateWidth: Int = 0,
     trackingCoordinateHeight: Int = 0,
-    verificationColor: Color = Color(0xFF00E5FF),
-    verificationRotationX: Float = 0f,
-    verificationRotationY: Float = 0f,
-    verificationRotationZ: Float = 0f,
-    verificationScale: Float = 1f,
-    verificationSize: Float = 1f,
-    verificationStrokeDp: Float = 1.8f,
+    anchorStrokeDp: Float = 2.2f,
     isLoading: Boolean,
     modifier: Modifier = Modifier,
     requestedZoom: Float? = null,
@@ -249,14 +243,14 @@ fun ViewerCanvas(
                     }
             )
 
-            if (trackingPoints.isNotEmpty() || trackingVerificationSegments.isNotEmpty()) {
+            if (trackingPoints.isNotEmpty() || anchorSegments.isNotEmpty()) {
                 // Compact 3DEqualizer-inspired track reticle: fine arms, a
                 // clear center gap and a tiny center target. Keep dimensions in
                 // screen-independent dp so markers stay unobtrusive on phones.
                 val markerHalfSize = with(LocalDensity.current) { trackingPointSizeDp.coerceIn(2f, 5.5f).dp.toPx() }
                 val markerStroke = with(LocalDensity.current) { (trackingPointSizeDp * 0.34f).coerceIn(0.9f, 1.5f).dp.toPx() }
                 val markerOutline = markerStroke + with(LocalDensity.current) { 1.1.dp.toPx() }
-                val verificationStroke = with(LocalDensity.current) { verificationStrokeDp.coerceIn(1f, 5f).dp.toPx() }
+                val anchorStroke = with(LocalDensity.current) { anchorStrokeDp.coerceIn(1f, 5f).dp.toPx() }
                 Canvas(
                     modifier = Modifier.fillMaxSize().graphicsLayer {
                         scaleX = transform.zoom
@@ -270,28 +264,22 @@ fun ViewerCanvas(
                     val imageTop = (size.height - bitmap.height * fitScale) * 0.5f
                     val coordinateScaleX = if (trackingCoordinateWidth > 0) bitmap.width.toFloat() / trackingCoordinateWidth else 1f
                     val coordinateScaleY = if (trackingCoordinateHeight > 0) bitmap.height.toFloat() / trackingCoordinateHeight else 1f
-                    if (trackingVerificationSegments.isNotEmpty()) {
-                        val points = trackingVerificationSegments.flatMap { listOf(it.startX to it.startY, it.endX to it.endY) }
-                        val centerX = points.map { it.first }.average().toFloat()
-                        val centerY = points.map { it.second }.average().toFloat()
-                        val rx = Math.toRadians(verificationRotationX.toDouble()).toFloat()
-                        val ry = Math.toRadians(verificationRotationY.toDouble()).toFloat()
-                        val rz = Math.toRadians(verificationRotationZ.toDouble()).toFloat()
-                        val sx = kotlin.math.cos(ry) * kotlin.math.cos(rz)
-                        val shearX = kotlin.math.sin(rx) * 0.35f
-                        val sy = kotlin.math.cos(rx) * kotlin.math.cos(rz)
-                        val shearY = kotlin.math.sin(ry) * 0.35f
-                        val displayScale = verificationScale.coerceIn(0.25f, 3f) * verificationSize.coerceIn(0.5f, 2f)
-                        fun transformed(x: Float, y: Float): Offset {
-                            val dx = (x - centerX) * displayScale
-                            val dy = (y - centerY) * displayScale
-                            val rotatedX = dx * sx - dy * kotlin.math.sin(rz) + dy * shearX
-                            val rotatedY = dx * kotlin.math.sin(rz) + dy * sy + dx * shearY
-                            return Offset(imageLeft + (centerX + rotatedX) * coordinateScaleX * fitScale, imageTop + (centerY + rotatedY) * coordinateScaleY * fitScale)
-                        }
-                        trackingVerificationSegments.forEach { segment ->
-                            drawLine(color = verificationColor, start = transformed(segment.startX, segment.startY), end = transformed(segment.endX, segment.endY), strokeWidth = verificationStroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
-                        }
+                    anchorSegments.forEach { segment ->
+                        val startPoint = Offset(
+                            imageLeft + segment.startX * coordinateScaleX * fitScale,
+                            imageTop + segment.startY * coordinateScaleY * fitScale
+                        )
+                        val endPoint = Offset(
+                            imageLeft + segment.endX * coordinateScaleX * fitScale,
+                            imageTop + segment.endY * coordinateScaleY * fitScale
+                        )
+                        drawLine(
+                            color = Color(segment.colorArgb),
+                            start = startPoint,
+                            end = endPoint,
+                            strokeWidth = anchorStroke,
+                            cap = androidx.compose.ui.graphics.StrokeCap.Round
+                        )
                     }
                     trackingPoints.forEach { point ->
                         val x = imageLeft + point.x.toFloat() * coordinateScaleX * fitScale

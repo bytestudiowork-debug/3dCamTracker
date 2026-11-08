@@ -207,7 +207,7 @@ private fun FootageSummary(
     ) {
 
         Text(
-            "Sequence detected",
+            if (state.isVideoSource) "Video detected" else "Sequence detected",
             style =
                 MaterialTheme.typography.titleSmall
         )

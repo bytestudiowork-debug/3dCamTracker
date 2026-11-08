@@ -33,6 +33,7 @@ data class NewProjectUiState(
     val extractionCurrentName: String = "",
 
     val footage: FootageInfo = FootageInfo.EMPTY,
+    val isVideoSource: Boolean = false,
     val importError: String? = null,
 
     val proxySettings: ProxySettings = ProxySettings(),

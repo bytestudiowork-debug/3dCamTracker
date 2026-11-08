@@ -10,6 +10,7 @@ import com.trackstudio.app.data.io.ImportProgress
 import com.trackstudio.app.data.io.ProxyGenerator
 import com.trackstudio.app.data.io.ProxyProgress
 import com.trackstudio.app.data.io.VideoSourceProbe
+import com.trackstudio.app.data.io.VideoProxyGenerator
 import com.trackstudio.app.data.model.ProjectSettings
 import com.trackstudio.app.data.repository.ProjectRepository
 import com.trackstudio.app.util.FileUtils
@@ -28,6 +29,7 @@ class NewProjectViewModel(
     private val appContext: Context,
     private val importer: ImageSequenceImporter,
     private val proxyGenerator: ProxyGenerator,
+    private val videoProxyGenerator: VideoProxyGenerator,
     private val repository: ProjectRepository
 ) : ViewModel() {
 
@@ -151,7 +153,7 @@ class NewProjectViewModel(
         selectedVideoRotationDegrees = 0
         takePersistableReadPermission(folderUri)
         _uiState.update {
-            it.copy(importPhase = ImportPhase.PROBING, importError = null,
+            it.copy(importPhase = ImportPhase.PROBING, isVideoSource = false, importError = null,
                 probingProgress = 0 to 0, probingCurrentName = "")
         }
         importJob = viewModelScope.launch { probeFolder(folderUri) }
@@ -164,7 +166,7 @@ class NewProjectViewModel(
         selectedVideoUri = videoUri
         selectedVideoRotationDegrees = 0
         _uiState.update {
-            it.copy(importPhase = ImportPhase.PROBING, importError = null,
+            it.copy(importPhase = ImportPhase.PROBING, isVideoSource = true, importError = null,
                 probingProgress = 0 to 0, probingCurrentName = "Reading video stream metadata...")
         }
         importJob = viewModelScope.launch {
@@ -181,7 +183,6 @@ class NewProjectViewModel(
                 _uiState.update {
                     it.copy(importPhase = ImportPhase.PROBED, footage = footage,
                         frameRate = info.frameRate,
-                        proxySettings = it.proxySettings.copy(enabled = false),
                         probingProgress = info.frameCount to info.frameCount,
                         probingCurrentName = "Video ready — frames decode during tracking")
                 }
@@ -190,7 +191,8 @@ class NewProjectViewModel(
             } catch (error: Exception) {
                 _uiState.update {
                     it.copy(importPhase = ImportPhase.FAILED,
-                        importError = error.message ?: "Unable to read this video.")
+                        importError = "Video import failed (${error.javaClass.simpleName}): " +
+                            (generateSequence<Throwable>(error) { it.cause }.last().message ?: error.message ?: "Unable to read this video."))
                 }
             }
         }
@@ -208,7 +210,7 @@ class NewProjectViewModel(
                     selectedFolderUri = folderUri
                     val suggestProxy = progress.footage.requiresProxyByDefault
                     _uiState.update {
-                        it.copy(importPhase = ImportPhase.PROBED, footage = progress.footage,
+                        it.copy(importPhase = ImportPhase.PROBED, isVideoSource = false, footage = progress.footage,
                             proxySettings = it.proxySettings.copy(
                                 enabled = suggestProxy || it.proxySettings.enabled))
                     }
@@ -293,7 +295,7 @@ class NewProjectViewModel(
                     state.colorSpace
             )
 
-        if (videoUri != null || !state.proxySettings.enabled) {
+        if (!state.proxySettings.enabled) {
 
             repository.saveProjectMetadata(settings)
 
@@ -302,7 +304,7 @@ class NewProjectViewModel(
             _uiState.update {
                 it.copy(
                     creationPhase = CreationPhase.DONE,
-                    proxyWarning = if (videoUri != null && state.proxySettings.enabled) "Video remains in its original format; frames decode on demand. Image proxies are not generated for video yet." else null
+                    proxyWarning = null
                 )
             }
 
@@ -334,12 +336,24 @@ class NewProjectViewModel(
                 )
 
             try {
-                proxyGenerator.generate(
-                    footage = settings.footage,
-                    scale = settings.proxy.resolution.scale,
-                    jpegQuality = settings.proxy.jpegQuality,
-                    outputDir = outputDir
-                ).collect { progress ->
+                val proxyFlow = if (videoUri != null) {
+                    videoProxyGenerator.generate(
+                        uri = videoUri,
+                        frameCount = settings.footage.frameCount,
+                        rotationDegrees = settings.videoRotationDegrees,
+                        scale = settings.proxy.resolution.scale,
+                        jpegQuality = settings.proxy.jpegQuality,
+                        outputDir = outputDir
+                    )
+                } else {
+                    proxyGenerator.generate(
+                        footage = settings.footage,
+                        scale = settings.proxy.resolution.scale,
+                        jpegQuality = settings.proxy.jpegQuality,
+                        outputDir = outputDir
+                    )
+                }
+                proxyFlow.collect { progress ->
 
                 when (progress) {
 
@@ -415,6 +429,7 @@ class NewProjectViewModel(
 
                 importer = ImageSequenceImporter(resolver),
                 proxyGenerator = ProxyGenerator(resolver),
+                videoProxyGenerator = VideoProxyGenerator(appContext),
                 repository =
                     ProjectRepository(
                         appContext

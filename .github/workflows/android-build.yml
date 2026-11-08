@@ -1,6 +1,6 @@
 name: Android CI Build
 
-run-name: Fix remaining viewer compilation errors
+run-name: Build optimized release APK
 
 on:
   push:
@@ -75,16 +75,16 @@ jobs:
         run: ./gradlew --version
 
       - name: Run tracking engine unit tests
-        run: ./gradlew testDebugUnitTest --stacktrace --no-daemon
+        run: ./gradlew testReleaseUnitTest --stacktrace --no-daemon
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug --stacktrace --no-daemon
+      - name: Build release APK
+        run: ./gradlew assembleRelease --stacktrace --no-daemon
 
-      - name: Upload debug APK
+      - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: trackstudio-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: trackstudio-release-apk
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 14
 

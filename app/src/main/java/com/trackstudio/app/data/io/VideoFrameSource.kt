@@ -16,6 +16,33 @@ import kotlinx.coroutines.ensureActive
 import java.io.Closeable
 import kotlin.math.max
 
+
+/** Provider-safe source setup. Some document providers reject the Uri overload
+ * but expose the same content through an AssetFileDescriptor. */
+internal fun setExtractorDataSource(context: Context, uri: Uri, extractor: MediaExtractor) {
+    try {
+        setExtractorDataSource(context, uri, extractor)
+    } catch (first: Exception) {
+        val descriptor = context.contentResolver.openAssetFileDescriptor(uri, "r") ?: throw first
+        descriptor.use {
+            if (it.length >= 0L) extractor.setDataSource(it.fileDescriptor, it.startOffset, it.length)
+            else extractor.setDataSource(it.fileDescriptor)
+        }
+    }
+}
+
+internal fun setRetrieverDataSource(context: Context, uri: Uri, retriever: MediaMetadataRetriever) {
+    try {
+        retriever.setDataSource(context, uri)
+    } catch (first: Exception) {
+        val descriptor = context.contentResolver.openAssetFileDescriptor(uri, "r") ?: throw first
+        descriptor.use {
+            if (it.length >= 0L) retriever.setDataSource(it.fileDescriptor, it.startOffset, it.length)
+            else retriever.setDataSource(it.fileDescriptor)
+        }
+    }
+}
+
 data class VideoSourceInfo(
     val width: Int,
     val height: Int,
@@ -34,7 +61,7 @@ object VideoSourceProbe {
     fun probe(context: Context, uri: Uri): VideoSourceInfo {
         val extractor = MediaExtractor()
         try {
-            extractor.setDataSource(context, uri, null)
+            setExtractorDataSource(context, uri, extractor)
             var track = -1
             var format: MediaFormat? = null
             for (i in 0 until extractor.trackCount) {
@@ -105,7 +132,7 @@ class VideoPreviewDecoder(
     private var closed = false
 
     init {
-        retriever.setDataSource(context, uri)
+        setRetrieverDataSource(context, uri, retriever)
     }
 
     @Synchronized
@@ -155,7 +182,7 @@ class SequentialVideoFrameDecoder(
     private var closed = false
 
     init {
-        extractor.setDataSource(context, uri, null)
+        setExtractorDataSource(context, uri, extractor)
         var selectedFormat: MediaFormat? = null
         for (i in 0 until extractor.trackCount) {
             val candidate = extractor.getTrackFormat(i)
@@ -232,8 +259,11 @@ private fun rotateIfNeeded(bitmap: Bitmap, degrees: Int): Bitmap {
 
 private fun Image.toArgbBitmap(): Bitmap {
     try {
-        check(format == ImageFormat.YUV_420_888) {
-            "Unsupported decoded video pixel format: $format"
+        val chromaSubsample = when (format) {
+            ImageFormat.YUV_420_888 -> 2 to 2
+            ImageFormat.YUV_422_888 -> 2 to 1
+            ImageFormat.YUV_444_888 -> 1 to 1
+            else -> error("Unsupported decoded video pixel format: $format")
         }
         val crop = cropRect
         val width = crop.width()
@@ -251,8 +281,8 @@ private fun Image.toArgbBitmap(): Bitmap {
             for (x in 0 until width) {
                 val sx = crop.left + x
                 val yy = yBuffer.get(sy * yPlane.rowStride + sx * yPlane.pixelStride).toInt() and 255
-                val uvx = sx / 2
-                val uvy = sy / 2
+                val uvx = sx / chromaSubsample.first
+                val uvy = sy / chromaSubsample.second
                 val u = (uBuffer.get(uvy * uPlane.rowStride + uvx * uPlane.pixelStride).toInt() and 255) - 128
                 val v = (vBuffer.get(uvy * vPlane.rowStride + uvx * vPlane.pixelStride).toInt() and 255) - 128
                 val c = max(0, yy - 16)
