@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <exception>
 #include <memory>
 #include <vector>
 
@@ -83,6 +84,7 @@ Java_com_trackstudio_app_tracking_glomap_GlomapGlobalBundleAdjuster_nativeSolve(
         jint max_iterations,
         jint num_threads,
         jobject progress_listener) {
+    try {
     if (!camera_centers_array || !rotations_array || !points_array ||
         !frame_indices_array || !track_indices_array || !image_points_array ||
         !intrinsics_array) {
@@ -211,4 +213,11 @@ Java_com_trackstudio_app_tracking_glomap_GlomapGlobalBundleAdjuster_nativeSolve(
         env->SetDoubleArrayRegion(result, 0, static_cast<jsize>(output.size()), output.data());
     }
     return result;
+    } catch (const std::exception& error) {
+        __android_log_print(ANDROID_LOG_ERROR, "TrackStudioGlobalBA", "Native solve exception: %s", error.what());
+        return EmptyResult(env);
+    } catch (...) {
+        __android_log_print(ANDROID_LOG_ERROR, "TrackStudioGlobalBA", "Unknown native solve exception.");
+        return EmptyResult(env);
+    }
 }

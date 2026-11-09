@@ -75,7 +75,15 @@ class GlobalReconstructionEngine(
         }
         check(OpenCvRuntime.ensureLoaded()) { "OpenCV could not be initialized on this device." }
 
-        val orb = ORB.create(maxFeatures.coerceIn(500, 4000))
+        // Bound per-frame descriptor memory on long clips while retaining a
+        // sufficiently rich feature set for geometric verification.
+        val heapMb = Runtime.getRuntime().maxMemory() / (1024L * 1024L)
+        val featureBudget = when {
+            frameCount >= 500 -> if (heapMb <= 256L) 800 else 1000
+            frameCount >= 250 -> if (heapMb <= 256L) 950 else 1200
+            else -> maxFeatures.coerceIn(500, 4000)
+        }
+        val orb = ORB.create(featureBudget)
         val frames = arrayOfNulls<FrameFeatures>(frameCount)
         var decodedFrames = 0
         val solveContext = currentCoroutineContext()
@@ -132,7 +140,10 @@ class GlobalReconstructionEngine(
                 )
             }
 
-            val candidatePairs = buildPairSchedule(frameCount, maximumPairCount)
+            // Long clips need both a connected temporal backbone and wider
+            // baselines. The default 420-pair cap must not collapse a 588-frame
+            // sequence into adjacent-only comparisons.
+            val candidatePairs = buildPairSchedule(frameCount, maxOf(maximumPairCount, frameCount * 2))
             val completedPairs = AtomicInteger(0)
             val progressMutex = Mutex()
             val workerCount = minOf(Runtime.getRuntime().availableProcessors().coerceAtLeast(1), 2, candidatePairs.size.coerceAtLeast(1))
@@ -167,6 +178,10 @@ class GlobalReconstructionEngine(
                     }
                 }.awaitAll().flatten()
             }
+            // Descriptor Mats are no longer needed after pair verification.
+            // Release them before constructing the multi-view graph to lower
+            // peak native memory on long sequences.
+            frames.filterNotNull().forEach { it.descriptors.release() }
             val totalMatches = verifiedPairs.sumOf { it.matchCount }
             val totalInliers = verifiedPairs.sumOf { it.inlierMatches.size }
             if (verifiedPairs.isEmpty()) {
@@ -191,11 +206,12 @@ class GlobalReconstructionEngine(
             ) ?: throw IllegalStateException("Global rotation refinement failed.")
             val rotations = rotationPass.rotationsByFrame
             val activeFrames = rotations.keys.sorted()
+            val acceptedPairKeys = rotationPass.acceptedEdges.mapTo(HashSet()) {
+                (it.firstFrame.toLong() shl 32) xor (it.secondFrame.toLong() and 0xffffffffL)
+            }
             val activePairs = verifiedPairs.filter {
                 it.first in rotations && it.second in rotations &&
-                    rotationPass.acceptedEdges.any { edge ->
-                        edge.firstFrame == it.first && edge.secondFrame == it.second
-                    }
+                    ((it.first.toLong() shl 32) xor (it.second.toLong() and 0xffffffffL)) in acceptedPairKeys
             }
             if (activeFrames.size < 3 || activePairs.isEmpty()) {
                 throw IllegalStateException("The global view graph contains fewer than three connected cameras.")
@@ -304,7 +320,7 @@ class GlobalReconstructionEngine(
                     point?.let { id to it }
                 }.toMap(),
                 maxIterations = 100,
-                numThreads = Runtime.getRuntime().availableProcessors().coerceIn(1, 4),
+                numThreads = if (activeFrames.size >= 300) 2 else Runtime.getRuntime().availableProcessors().coerceIn(1, 4),
                 onIteration = { iteration, total -> publishProgress("Global position solve " + iteration + "/" + total, 0.78f + 0.10f * iteration.toFloat() / total.coerceAtLeast(1)) }
             ) ?: throw IllegalStateException("The global camera-position and point solve did not converge to a usable solution.")
 
@@ -325,7 +341,7 @@ class GlobalReconstructionEngine(
                 tracks = tracks,
                 cameraMatrix = cameraMatrix,
                 maxIterations = 45,
-                numThreads = Runtime.getRuntime().availableProcessors().coerceIn(1, 4),
+                numThreads = if (activeFrames.size >= 300) 2 else Runtime.getRuntime().availableProcessors().coerceIn(1, 4),
                 onIteration = { iteration, total -> publishProgress("Global bundle adjustment " + iteration + "/" + total, 0.88f + 0.05f * iteration.toFloat() / total.coerceAtLeast(1)) }
             ) ?: throw IllegalStateException("Global bundle adjustment could not produce a usable joint camera-and-point solution.")
 

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <exception>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -52,6 +53,7 @@ Java_com_trackstudio_app_tracking_glomap_GlomapNativeSolver_nativeSolve(
         jint max_iterations,
         jint num_threads,
         jobject progress_listener) {
+    try {
     if (!frame_centers_array || !points_array || !frame_indices_array ||
         !track_indices_array || !directions_array || !initial_scales_array ||
         !loss_scales_array) {
@@ -188,4 +190,11 @@ Java_com_trackstudio_app_tracking_glomap_GlomapNativeSolver_nativeSolve(
                                   output.data());
     }
     return result;
+    } catch (const std::exception& error) {
+        __android_log_print(ANDROID_LOG_ERROR, "TrackStudioGlobalPosition", "Native solve exception: %s", error.what());
+        return env->NewDoubleArray(0);
+    } catch (...) {
+        __android_log_print(ANDROID_LOG_ERROR, "TrackStudioGlobalPosition", "Unknown native solve exception.");
+        return env->NewDoubleArray(0);
+    }
 }
