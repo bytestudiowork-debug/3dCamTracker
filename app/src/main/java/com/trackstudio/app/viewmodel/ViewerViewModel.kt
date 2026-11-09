@@ -24,6 +24,7 @@ import com.trackstudio.app.tracking.OpenCvRuntime
 import com.trackstudio.app.data.io.VideoPreviewDecoder
 import com.trackstudio.app.data.io.SequentialVideoFrameDecoder
 import com.trackstudio.app.data.io.VideoProxyGenerator
+import com.trackstudio.app.data.io.VideoProxyPolicy
 import com.trackstudio.app.data.io.ProxyProgress
 import com.trackstudio.app.util.FileUtils
 import java.io.File
@@ -110,6 +111,7 @@ class ViewerViewModel(
 
     private var frameUris: List<Uri> = emptyList()
     private var trackingFrameUris: List<Uri> = emptyList()
+    private var videoTrackingFrameUris: List<Uri> = emptyList()
     private var sourceVideoUri: Uri? = null
     private var sourceVideoFrameCount: Int = 0
     private var sourceVideoRotation: Int = 0
@@ -212,6 +214,7 @@ class ViewerViewModel(
         if (videoUri != null && uris.isEmpty()) videoPreviewDecoder = VideoPreviewDecoder(appContext, videoUri, videoRotationDegrees)
         frameUris = uris.toList()
         trackingFrameUris = sourceUris.toList()
+        videoTrackingFrameUris = emptyList()
         bitmapCache.evictAll()
         frameBytes = 0
         thumbnailCount = 0
@@ -280,22 +283,37 @@ class ViewerViewModel(
         quality: Int,
         projectId: String
     ) {
-        val outputDir = FileUtils.proxyDir(appContext, projectId, "proxy_cache")
+        val viewerOutputDir = FileUtils.proxyDir(appContext, projectId, "proxy_cache")
+        val trackingOutputDir = FileUtils.proxyDir(appContext, projectId, "tracking_proxy_cache")
+        val viewerScale = VideoProxyPolicy.recommendedViewerScale(sourceVideoWidth, sourceVideoHeight, scale)
         _uiState.update { it.copy(proxyGenerationProgress = 0 to frameCount, proxyGenerationError = null) }
         videoProxyJob = viewModelScope.launch {
             try {
-                VideoProxyGenerator(appContext).generate(
-                    uri, frameCount, rotationDegrees, scale, quality, outputDir
+                VideoProxyGenerator(appContext).generateDual(
+                    uri = uri,
+                    frameCount = frameCount,
+                    rotationDegrees = rotationDegrees,
+                    viewerScale = viewerScale,
+                    trackingScale = scale,
+                    jpegQuality = quality,
+                    viewerOutputDir = viewerOutputDir,
+                    trackingOutputDir = trackingOutputDir
                 ).collect { progress ->
                     when (progress) {
                         is ProxyProgress.Generating ->
                             _uiState.update { it.copy(proxyGenerationProgress = progress.done to progress.total) }
                         is ProxyProgress.Done -> {
-                            val proxies = (0 until frameCount).map { index ->
-                                Uri.fromFile(File(outputDir, "proxy_%05d.jpg".format(index)))
+                            val viewerProxies = (0 until frameCount).map { index ->
+                                Uri.fromFile(File(viewerOutputDir, "proxy_%05d.jpg".format(index)))
                             }
-                            if (proxies.all { File(it.path ?: "").isFile }) {
-                                frameUris = proxies
+                            val trackingProxies = (0 until frameCount).map { index ->
+                                Uri.fromFile(File(trackingOutputDir, "proxy_%05d.jpg".format(index)))
+                            }
+                            val viewerReady = viewerProxies.all { File(it.path ?: "").isFile }
+                            val trackingReady = trackingProxies.all { File(it.path ?: "").isFile }
+                            if (viewerReady && trackingReady) {
+                                frameUris = viewerProxies
+                                videoTrackingFrameUris = trackingProxies
                                 bitmapCache.evictAll()
                                 frameBytes = 0
                                 videoPreviewDecoder?.close()
@@ -303,16 +321,25 @@ class ViewerViewModel(
                                 _uiState.update { it.copy(proxyGenerationProgress = null, proxyGenerationError = null) }
                                 showFrame(_uiState.value.playback.currentFrame)
                             } else {
-                                _uiState.update { it.copy(proxyGenerationProgress = null, proxyGenerationError = "Proxy cache is incomplete; continuing with direct video preview.") }
+                                videoTrackingFrameUris = emptyList()
+                                _uiState.update {
+                                    it.copy(
+                                        proxyGenerationProgress = null,
+                                        proxyGenerationError = "A proxy sequence is incomplete; the source decoder will be used as a fallback."
+                                    )
+                                }
                             }
                         }
-                        is ProxyProgress.Failed ->
+                        is ProxyProgress.Failed -> {
+                            videoTrackingFrameUris = emptyList()
                             _uiState.update { it.copy(proxyGenerationProgress = null, proxyGenerationError = progress.reason) }
+                        }
                     }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
+                videoTrackingFrameUris = emptyList()
                 _uiState.update { it.copy(proxyGenerationProgress = null, proxyGenerationError = failure.message ?: "Video proxy generation failed.") }
             }
         }
@@ -400,23 +427,43 @@ class ViewerViewModel(
             _uiState.update { it.copy(trackingError = "Original source frames are unavailable for Global reconstruction. Reopen or relink the project footage.") }
             return
         }
-        // A completed video proxy sequence is the tracking working set as well as
-        // the playback source. Only fall back to sequential source decoding when
-        // proxy generation was disabled or failed.
-        val uris = (if (videoUri != null) frameUris else if (useOriginals) trackingFrameUris else frameUris).toList()
-        val totalFrames = if (videoUri != null) sourceVideoFrameCount else uris.size
-        val decodeLimit = if (videoUri != null && uris.isEmpty() || useOriginals && videoUri == null) Int.MAX_VALUE else maxDecodeDimension
+        val totalFrames = if (videoUri != null) sourceVideoFrameCount
+            else if (useOriginals) trackingFrameUris.size else frameUris.size
         if (totalFrames < 3) {
             _uiState.update { it.copy(trackingError = "Auto Track needs at least three frames.") }
             return
         }
         playbackController.pause()
         trackingJob?.cancel()
-        _uiState.update { it.copy(isAutoTracking = true, trackingProgress = CameraTrackingProgress(0, totalFrames, "Preparing footage", 0f, 0, totalFrames), trackingError = null, trackingSummary = null, trackingPointsByFrame = emptyMap(), anchorSegmentsByFrame = emptyMap()) }
+        _uiState.update {
+            it.copy(
+                isAutoTracking = true,
+                trackingProgress = CameraTrackingProgress(0, totalFrames, "Preparing reduced-resolution tracking footage", 0f, 0, totalFrames),
+                trackingError = null,
+                trackingSummary = null,
+                trackingPointsByFrame = emptyMap(),
+                anchorSegmentsByFrame = emptyMap()
+            )
+        }
         trackingJob = viewModelScope.launch {
             var intrinsics: Mat? = null
             var sequentialDecoder: SequentialVideoFrameDecoder? = null
+            var uris: List<Uri> = emptyList()
+            var decodeLimit = maxDecodeDimension
             try {
+                // Avoid competing video decode pipelines. Prefer the dedicated
+                // low-resolution tracking proxy, with sequential source decoding
+                // as a fallback if proxy creation fails.
+                if (videoUri != null) {
+                    _uiState.update {
+                        it.copy(trackingProgress = CameraTrackingProgress(0, totalFrames, "Preparing tracking proxy", 0.01f, 0, totalFrames))
+                    }
+                    videoProxyJob?.join()
+                    uris = videoTrackingFrameUris.takeIf { it.size == totalFrames }.orEmpty()
+                } else {
+                    uris = (if (useOriginals) trackingFrameUris else frameUris).toList()
+                }
+                decodeLimit = if (videoUri == null && useOriginals) Int.MAX_VALUE else maxDecodeDimension
                 check(OpenCvRuntime.ensureLoaded()) { "OpenCV could not be initialized on this device." }
                 val dimensions = if (videoUri != null && uris.isEmpty()) {
                     ((sourceVideoWidth * sourceVideoTrackingScale).toInt().coerceAtLeast(1)) to
@@ -431,6 +478,8 @@ class ViewerViewModel(
                     sequentialDecoder = withContext(Dispatchers.IO) {
                         SequentialVideoFrameDecoder(appContext, videoUri, sourceVideoRotation, sourceVideoTrackingScale)
                     }
+                } else if (videoUri != null && uris.size != totalFrames) {
+                    error("The tracking proxy sequence is incomplete; no frames were skipped.")
                 }
                 val width = dimensions.first
                 val height = dimensions.second
