@@ -75,9 +75,11 @@ internal fun TrackingToolPopup(
     markerColorArgb: Int,
     markerSizeDp: Float,
     markerOutline: Boolean,
+    markerOpacity: Float,
     onMarkerColorChanged: (Int) -> Unit,
     onMarkerSizeChanged: (Float) -> Unit,
     onMarkerOutlineChanged: (Boolean) -> Unit,
+    onMarkerOpacityChanged: (Float) -> Unit,
     onTracksChanged: (Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -196,6 +198,12 @@ internal fun TrackingToolPopup(
                         valueRange = 2f..5.5f
                     )
                     PopupSwitch("Dark outline", markerOutline, onMarkerOutlineChanged)
+                    Text("Overlay transparency · ${(markerOpacity * 100).toInt()}%", color = TextPrimary, fontSize = 12.sp)
+                    Slider(
+                        value = markerOpacity.coerceIn(0.15f, 1f),
+                        onValueChange = onMarkerOpacityChanged,
+                        valueRange = 0.15f..1f
+                    )
                     PopupMetric("Frame", "$currentFrame / $frameCount")
                     PopupMetric("Tracked observations on frame", trackPointCount.toString())
                     Text(
