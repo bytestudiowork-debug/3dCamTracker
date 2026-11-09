@@ -5,13 +5,13 @@ import com.trackstudio.app.tracking.glomap.GlomapGlobalPositioningProblemBuilder
 import com.trackstudio.app.tracking.glomap.GlomapGlobalBundleAdjuster
 import com.trackstudio.app.tracking.glomap.GlomapNativeSolver
 import kotlinx.coroutines.Dispatchers
- import kotlinx.coroutines.async
+import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
- import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.opencv.calib3d.Calib3d
 import org.opencv.core.Core
 import org.opencv.core.Mat
@@ -78,12 +78,13 @@ class GlobalReconstructionEngine(
         val orb = ORB.create(maxFeatures.coerceIn(500, 4000))
         val frames = arrayOfNulls<FrameFeatures>(frameCount)
         var decodedFrames = 0
+        val solveContext = currentCoroutineContext()
         fun publishProgress(phase: String, fraction: Float) {
             // Native optimizer iteration callbacks are synchronous. Bridge them
             // to the suspend progress handler so Pause really stops at the next
             // optimizer iteration instead of merely updating the UI.
             runBlocking {
-                currentCoroutineContext().ensureActive()
+                solveContext.ensureActive()
                 onProgress(CameraTrackingProgress(frameCount, frameCount, phase, fraction, decodedFrames, frameCount))
             }
         }
