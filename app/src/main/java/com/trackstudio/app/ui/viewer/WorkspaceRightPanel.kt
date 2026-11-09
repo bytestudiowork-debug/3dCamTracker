@@ -278,13 +278,24 @@ private fun TrackingToolsCard(
                 }
             }
             if (isAutoTracking) {
-                ChromeButton(
-                    text = if (isTrackingPaused) "Resume Tracking" else "Pause Tracking",
-                    icon = if (isTrackingPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
-                    onClick = onToggleTrackingPause,
-                    modifier = Modifier.fillMaxWidth(),
-                    height = 40.dp
-                )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ChromeButton(
+                        text = "Pause",
+                        icon = Icons.Filled.Pause,
+                        onClick = { if (!isTrackingPaused) onToggleTrackingPause() },
+                        modifier = Modifier.weight(1f),
+                        height = 40.dp,
+                        enabled = !isTrackingPaused
+                    )
+                    ChromeButton(
+                        text = "Resume",
+                        icon = Icons.Filled.PlayArrow,
+                        onClick = { if (isTrackingPaused) onToggleTrackingPause() },
+                        modifier = Modifier.weight(1f),
+                        height = 40.dp,
+                        enabled = isTrackingPaused
+                    )
+                }
                 ChromeButton(text = "Cancel Tracking", icon = Icons.Filled.Stop, onClick = onCancelAutoTrack, modifier = Modifier.fillMaxWidth(), height = 40.dp)
                 if (isTrackingPaused) {
                     Text("Paused at a solver checkpoint. Keep the app open; progress remains in memory.", color = TextSecondary, fontSize = 10.sp)
