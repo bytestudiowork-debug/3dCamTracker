@@ -115,6 +115,7 @@ fun ViewerScreen(
     var markerColorArgb by remember { mutableIntStateOf(0xFF00E5FF.toInt()) }
     var markerSizeDp by remember { mutableFloatStateOf(3f) }
     var markerOutline by remember { mutableStateOf(true) }
+    var markerOpacity by remember { mutableFloatStateOf(0.78f) }
     var showAnchorOverlay by remember { mutableStateOf(true) }
     var anchorLineWidthDp by remember { mutableFloatStateOf(2.2f) }
     var activeToolPopup by remember { mutableStateOf<String?>(null) }
@@ -166,14 +167,21 @@ fun ViewerScreen(
                             bitmap = state.currentBitmap,
                             trackingPoints = state.trackingPointsByFrame[state.playback.currentFrame].orEmpty(),
                             anchorSegments = if (showAnchorOverlay) state.anchorSegmentsByFrame[state.playback.currentFrame].orEmpty() else emptyList(),
-                            // Tracking coordinates come from the active working frame.
-                            // For video this is the half/quarter proxy, not source resolution.
-                            trackingCoordinateWidth = if (state.reconstructionMode == ReconstructionMode.GLOBAL) (state.currentBitmap?.width ?: sourceWidth) else 0,
-                            trackingCoordinateHeight = if (state.reconstructionMode == ReconstructionMode.GLOBAL) (state.currentBitmap?.height ?: sourceHeight) else 0,
+                            // Video observations are measured in the smaller tracking
+                            // proxy and projected onto the clearer viewer proxy.
+                            trackingCoordinateWidth = if (state.reconstructionMode == ReconstructionMode.GLOBAL) {
+                                if (videoUri != null) (sourceWidth * videoProxyScale).toInt().coerceAtLeast(1)
+                                else (state.currentBitmap?.width ?: sourceWidth)
+                            } else 0,
+                            trackingCoordinateHeight = if (state.reconstructionMode == ReconstructionMode.GLOBAL) {
+                                if (videoUri != null) (sourceHeight * videoProxyScale).toInt().coerceAtLeast(1)
+                                else (state.currentBitmap?.height ?: sourceHeight)
+                            } else 0,
                             showTrackPointsOverlay = showTrackPointsOverlay,
                             markerColorArgb = markerColorArgb,
                             markerSizeDp = markerSizeDp,
                             markerOutline = markerOutline,
+                            markerOpacity = markerOpacity,
                             anchorLineWidthDp = anchorLineWidthDp,
                             isLoading = state.isLoadingFrame,
                             errorMessage = state.errorMessage,
@@ -308,6 +316,8 @@ fun ViewerScreen(
                 markerColorArgb = markerColorArgb,
                 markerSizeDp = markerSizeDp,
                 markerOutline = markerOutline,
+                markerOpacity = markerOpacity,
+                onMarkerOpacityChanged = { markerOpacity = it },
                 onMarkerColorChanged = { markerColorArgb = it },
                 onMarkerSizeChanged = { markerSizeDp = it },
                 onMarkerOutlineChanged = { markerOutline = it },
@@ -329,6 +339,7 @@ private fun ViewerPanel(
     markerColorArgb: Int,
     markerSizeDp: Float,
     markerOutline: Boolean,
+    markerOpacity: Float,
     anchorLineWidthDp: Float,
     isLoading: Boolean,
     errorMessage: String?,
@@ -360,6 +371,7 @@ private fun ViewerPanel(
             trackingPointColor = Color(markerColorArgb.toLong() and 0xFFFFFFFFL),
             trackingPointSizeDp = markerSizeDp,
             trackingPointOutline = markerOutline,
+            trackingPointOpacity = markerOpacity,
             anchorSegments = anchorSegments,
             trackingCoordinateWidth = trackingCoordinateWidth,
             trackingCoordinateHeight = trackingCoordinateHeight,

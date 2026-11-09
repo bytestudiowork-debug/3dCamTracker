@@ -58,6 +58,7 @@ fun ViewerCanvas(
     trackingPointColor: Color = Color(0xFF00E5FF),
     trackingPointSizeDp: Float = 3f,
     trackingPointOutline: Boolean = true,
+    trackingPointOpacity: Float = 0.78f,
     anchorSegments: List<TrackingAnchorSegment> = emptyList(),
     trackingCoordinateWidth: Int = 0,
     trackingCoordinateHeight: Int = 0,
@@ -251,6 +252,8 @@ fun ViewerCanvas(
                 val markerStroke = with(LocalDensity.current) { (trackingPointSizeDp * 0.34f).coerceIn(0.9f, 1.5f).dp.toPx() }
                 val markerOutline = markerStroke + with(LocalDensity.current) { 1.1.dp.toPx() }
                 val anchorStroke = with(LocalDensity.current) { anchorStrokeDp.coerceIn(1f, 5f).dp.toPx() }
+                val markerOpacity = trackingPointOpacity.coerceIn(0f, 1f)
+                val visibleMarkerColor = trackingPointColor.copy(alpha = trackingPointColor.alpha * markerOpacity)
                 Canvas(
                     modifier = Modifier.fillMaxSize().graphicsLayer {
                         scaleX = transform.zoom
@@ -296,12 +299,12 @@ fun ViewerCanvas(
                             )
                             arms.forEach { (start, end) ->
                                 if (trackingPointOutline) drawLine(
-                                    color = Color.Black.copy(alpha = 0.92f),
+                                    color = Color.Black.copy(alpha = 0.92f * markerOpacity),
                                     start = start, end = end, strokeWidth = markerOutline,
                                     cap = androidx.compose.ui.graphics.StrokeCap.Square
                                 )
                                 drawLine(
-                                    color = trackingPointColor,
+                                    color = visibleMarkerColor,
                                     start = start, end = end, strokeWidth = markerStroke,
                                     cap = androidx.compose.ui.graphics.StrokeCap.Square
                                 )
