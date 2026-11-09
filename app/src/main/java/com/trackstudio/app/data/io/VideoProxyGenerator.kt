@@ -17,20 +17,31 @@ import java.io.File
 import java.io.FileOutputStream
 
 /**
- * Builds the same numbered JPEG proxy sequence used by image projects, but
- * decodes each video presentation timestamp from the original source. This
- * output is used for editor playback and as the lower-resolution video tracking
- * working set. The original SAF video remains untouched and is retained as the
- * project source for relinking or regenerating proxies.
+ * Produces editor and tracking proxies from one sequential timestamp list.
+ * The viewer proxy is clearer; the tracking proxy is smaller but retains every
+ * source presentation timestamp. Each source frame is decoded only once.
  */
 class VideoProxyGenerator(private val context: Context) {
     fun generate(
-        uri: Uri,
-        frameCount: Int,
-        rotationDegrees: Int,
-        scale: Float,
-        jpegQuality: Int,
-        outputDir: File
+        uri: Uri, frameCount: Int, rotationDegrees: Int, scale: Float,
+        jpegQuality: Int, outputDir: File
+    ): Flow<ProxyProgress> = generateInternal(
+        uri, frameCount, rotationDegrees, scale, scale, jpegQuality, outputDir, null
+    )
+
+    fun generateDual(
+        uri: Uri, frameCount: Int, rotationDegrees: Int,
+        viewerScale: Float, trackingScale: Float, jpegQuality: Int,
+        viewerOutputDir: File, trackingOutputDir: File
+    ): Flow<ProxyProgress> = generateInternal(
+        uri, frameCount, rotationDegrees, viewerScale, trackingScale,
+        jpegQuality, viewerOutputDir, trackingOutputDir
+    )
+
+    private fun generateInternal(
+        uri: Uri, frameCount: Int, rotationDegrees: Int,
+        requestedViewerScale: Float, requestedTrackingScale: Float,
+        jpegQuality: Int, viewerOutputDir: File, trackingOutputDir: File?
     ): Flow<ProxyProgress> = flow {
         val extractor = MediaExtractor()
         val retriever = MediaMetadataRetriever()
@@ -47,6 +58,7 @@ class VideoProxyGenerator(private val context: Context) {
             }
             check(videoTrack >= 0) { "The selected file does not contain a video track." }
 
+            // Preserve every compressed video sample in presentation order.
             val timestamps = ArrayList<Long>(frameCount)
             while (extractor.sampleTrackIndex == videoTrack) {
                 val timestamp = extractor.sampleTime
@@ -58,80 +70,100 @@ class VideoProxyGenerator(private val context: Context) {
             }
 
             setRetrieverDataSource(context, uri, retriever)
-            if (!outputDir.exists()) check(outputDir.mkdirs()) { "Could not create proxy directory." }
-            // Clear stale output so incomplete retries cannot masquerade as a valid cache.
-            outputDir.listFiles()
-                ?.filter { it.isFile && it.name.startsWith("proxy_") && it.name.endsWith(".jpg") }
-                ?.forEach { check(it.delete()) { "Could not clear an old proxy frame: ${it.name}" } }
-            val proxyScale = scale.coerceIn(0.1f, 1f)
-            val quality = jpegQuality.coerceIn(40, 100)
-            // Resolve target dimensions once; metadata access per frame is expensive.
-            val sourceWidth = runCatching { retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toInt() }
-                .getOrNull()?.coerceAtLeast(1) ?: 1
-            val sourceHeight = runCatching { retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toInt() }
-                .getOrNull()?.coerceAtLeast(1) ?: 1
+            prepareDirectory(viewerOutputDir)
+            trackingOutputDir?.let(::prepareDirectory)
+
+            val viewerScale = requestedViewerScale.coerceIn(0.25f, 1f)
+            val trackingScale = requestedTrackingScale.coerceIn(0.125f, viewerScale)
+            val viewerQuality = jpegQuality.coerceIn(40, 100)
+            val trackingQuality = maxOf(viewerQuality, 90)
+
+            val sourceWidth = runCatching {
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toInt()
+            }.getOrNull()?.coerceAtLeast(1) ?: 1
+            val sourceHeight = runCatching {
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toInt()
+            }.getOrNull()?.coerceAtLeast(1) ?: 1
             val rotatedSource = rotationDegrees % 180 != 0
             val orientedWidth = if (rotatedSource) sourceHeight else sourceWidth
             val orientedHeight = if (rotatedSource) sourceWidth else sourceHeight
-            val targetWidth = (orientedWidth * proxyScale).toInt().coerceAtLeast(1)
-            val targetHeight = (orientedHeight * proxyScale).toInt().coerceAtLeast(1)
-            // MediaMetadataRetriever decodes the coded (pre-rotation) frame.
-            val decoderWidth = (sourceWidth * proxyScale).toInt().coerceAtLeast(1)
-            val decoderHeight = (sourceHeight * proxyScale).toInt().coerceAtLeast(1)
+            val viewerWidth = (orientedWidth * viewerScale).toInt().coerceAtLeast(1)
+            val viewerHeight = (orientedHeight * viewerScale).toInt().coerceAtLeast(1)
+            val trackingWidth = (orientedWidth * trackingScale).toInt().coerceAtLeast(1)
+            val trackingHeight = (orientedHeight * trackingScale).toInt().coerceAtLeast(1)
+            val decoderWidth = (sourceWidth * viewerScale).toInt().coerceAtLeast(1)
+            val decoderHeight = (sourceHeight * viewerScale).toInt().coerceAtLeast(1)
 
             for (index in 0 until frameCount) {
                 emit(ProxyProgress.Generating(index, frameCount))
-                // Ask Android's decoder for the proxy dimensions directly. On API 27+
-                // this avoids allocating a full-resolution Bitmap only to throw most
-                // of its pixels away during a second resize. Older devices retain the
-                // compatible full-decode + resize fallback.
-                val decoded = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1 && proxyScale < 0.999f) {
+                val scaledDecode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1 && viewerScale < 0.999f) {
                     runCatching {
                         retriever.getScaledFrameAtTime(
-                            timestamps[index],
-                            MediaMetadataRetriever.OPTION_CLOSEST,
-                            decoderWidth,
-                            decoderHeight
+                            timestamps[index], MediaMetadataRetriever.OPTION_CLOSEST,
+                            decoderWidth, decoderHeight
                         )
                     }.getOrNull()
-                } else {
-                    retriever.getFrameAtTime(
-                        timestamps[index],
-                        MediaMetadataRetriever.OPTION_CLOSEST
-                    )
-                } ?: error("Unable to decode video frame ${index + 1} for proxy generation.")
+                } else null
+                val sourceFrame = scaledDecode ?: retriever.getFrameAtTime(
+                    timestamps[index], MediaMetadataRetriever.OPTION_CLOSEST
+                ) ?: error("Unable to decode video frame ${index + 1} for proxy generation.")
 
-                val rotated = rotateFrame(decoded, rotationDegrees)
-                val scaled = if (rotated.width != targetWidth || rotated.height != targetHeight) {
-                    Bitmap.createScaledBitmap(rotated, targetWidth, targetHeight, true).also {
-                        if (it !== rotated) rotated.recycle()
+                val oriented = rotateFrame(sourceFrame, rotationDegrees)
+                val viewerFrame = if (oriented.width != viewerWidth || oriented.height != viewerHeight) {
+                    Bitmap.createScaledBitmap(oriented, viewerWidth, viewerHeight, true).also {
+                        if (it !== oriented) oriented.recycle()
                     }
-                } else rotated
+                } else oriented
 
-                val destination = File(outputDir, "proxy_%05d.jpg".format(index))
-                val written = FileOutputStream(destination).use { output ->
-                    scaled.compress(Bitmap.CompressFormat.JPEG, quality, output)
+                try {
+                    writeJpeg(viewerFrame, File(viewerOutputDir, frameName(index)), viewerQuality)
+                    if (trackingOutputDir != null) {
+                        val trackingFrame = if (viewerFrame.width != trackingWidth || viewerFrame.height != trackingHeight) {
+                            Bitmap.createScaledBitmap(viewerFrame, trackingWidth, trackingHeight, true)
+                        } else viewerFrame
+                        try {
+                            writeJpeg(trackingFrame, File(trackingOutputDir, frameName(index)), trackingQuality)
+                        } finally {
+                            if (trackingFrame !== viewerFrame) trackingFrame.recycle()
+                        }
+                    }
+                } finally {
+                    viewerFrame.recycle()
                 }
-                scaled.recycle()
-                check(written) { "Could not write proxy frame ${index + 1}." }
                 yield()
             }
-            emit(ProxyProgress.Done(outputDir))
+            emit(ProxyProgress.Done(viewerOutputDir))
         } catch (cancelled: CancellationException) {
-            outputDir.listFiles()
-                ?.filter { it.isFile && it.name.startsWith("proxy_") && it.name.endsWith(".jpg") }
-                ?.forEach { it.delete() }
+            clearProxyFrames(viewerOutputDir)
+            trackingOutputDir?.let(::clearProxyFrames)
             throw cancelled
         } catch (error: Exception) {
-            outputDir.listFiles()
-                ?.filter { it.isFile && it.name.startsWith("proxy_") && it.name.endsWith(".jpg") }
-                ?.forEach { it.delete() }
+            clearProxyFrames(viewerOutputDir)
+            trackingOutputDir?.let(::clearProxyFrames)
             emit(ProxyProgress.Failed(error.message ?: "Video proxy generation failed."))
         } finally {
             runCatching { retriever.release() }
             runCatching { extractor.release() }
         }
     }.flowOn(Dispatchers.IO)
+
+    private fun prepareDirectory(directory: File) {
+        if (!directory.exists()) check(directory.mkdirs()) { "Could not create proxy directory." }
+        clearProxyFrames(directory)
+    }
+
+    private fun clearProxyFrames(directory: File) {
+        directory.listFiles()
+            ?.filter { it.isFile && it.name.startsWith("proxy_") && it.name.endsWith(".jpg") }
+            ?.forEach { it.delete() }
+    }
+
+    private fun writeJpeg(bitmap: Bitmap, destination: File, quality: Int) {
+        val written = FileOutputStream(destination).use { bitmap.compress(Bitmap.CompressFormat.JPEG, quality, it) }
+        check(written) { "Could not write proxy frame: ${destination.name}." }
+    }
+
+    private fun frameName(index: Int) = "proxy_%05d.jpg".format(index)
 
     private fun rotateFrame(bitmap: Bitmap, degrees: Int): Bitmap {
         val rotation = ((degrees % 360) + 360) % 360

@@ -6,6 +6,12 @@ import org.junit.Test
 
 class VideoProxyPolicyTest {
     @Test
+    fun viewerProxyIsHigherResolutionThanTrackingProxy() {
+        assertEquals(0.75f, VideoProxyPolicy.recommendedViewerScale(1920, 1080, 0.5f))
+        assertEquals(0.5f, VideoProxyPolicy.recommendedViewerScale(3840, 2160, 0.25f))
+    }
+
+    @Test
     fun short1080pVideoUsesHalfResolution() {
         assertEquals(
             ProxyResolution.HALF,

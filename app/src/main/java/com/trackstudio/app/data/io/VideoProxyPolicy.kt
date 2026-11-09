@@ -10,6 +10,16 @@ import com.trackstudio.app.data.model.ProxyResolution
  * frame count or compressed size makes full-resolution tracking expensive.
  */
 object VideoProxyPolicy {
+    fun recommendedViewerScale(width: Int, height: Int, trackingScale: Float): Float {
+        val pixels = width.coerceAtLeast(0).toLong() * height.coerceAtLeast(0).toLong()
+        val preferredViewerScale = when {
+            pixels >= 8_000_000L -> 0.5f
+            trackingScale <= 0.25f -> 0.5f
+            else -> 0.75f
+        }
+        return maxOf(trackingScale.coerceIn(0.125f, 1f), preferredViewerScale)
+    }
+
     fun recommendedResolution(
         width: Int,
         height: Int,
