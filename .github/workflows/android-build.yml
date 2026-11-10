@@ -80,10 +80,12 @@ jobs:
       - name: Build release APK
         run: ./gradlew assembleRelease --stacktrace --no-daemon
 
+      # PR builds still compile and run tests, but only branch/manual runs publish APK artifacts.
       - name: Upload release APK
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: trackstudio-release-apk
+          name: trackstudio-release-apk-${{ github.run_number }}-${{ github.sha }}
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 14
