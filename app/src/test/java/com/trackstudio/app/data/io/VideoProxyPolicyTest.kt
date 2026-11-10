@@ -34,13 +34,24 @@ class VideoProxyPolicyTest {
     }
 
     @Test
-    fun veryLong1080pVideoUsesQuarterResolution() {
+    fun veryLong1080pVideoKeepsHalfResolutionForFeatureDetail() {
         assertEquals(
-            ProxyResolution.QUARTER,
+            ProxyResolution.HALF,
             VideoProxyPolicy.recommendedResolution(
                 width = 1920, height = 1080, durationUs = 360_000_000L,
                 frameCount = 8_640, sizeBytes = 700_000_000L
             )
         )
     }
+    @Test
+    fun 720pVideoKeepsFullResolutionForFeatureDetail() {
+        assertEquals(
+            ProxyResolution.FULL,
+            VideoProxyPolicy.recommendedResolution(
+                width = 1280, height = 720, durationUs = 180_000_000L,
+                frameCount = 5_400, sizeBytes = 300_000_000L
+            )
+        )
+    }
+
 }
