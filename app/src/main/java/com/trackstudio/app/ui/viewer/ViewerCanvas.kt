@@ -254,6 +254,9 @@ fun ViewerCanvas(
                 val markerStroke = with(LocalDensity.current) { (trackingPointSizeDp * 0.34f).coerceIn(0.9f, 1.5f).dp.toPx() }
                 val markerOutline = markerStroke + with(LocalDensity.current) { 1.1.dp.toPx() }
                 val anchorStroke = with(LocalDensity.current) { anchorStrokeDp.coerceIn(1f, 5f).dp.toPx() }
+                val anchorPinWidth = with(LocalDensity.current) { 9.dp.toPx() }
+                val anchorPinHeight = with(LocalDensity.current) { 12.dp.toPx() }
+                val anchorPinOutline = with(LocalDensity.current) { 1.dp.toPx() }
                 val markerOpacity = trackingPointOpacity.coerceIn(0f, 1f)
                 val visibleMarkerColor = trackingPointColor.copy(alpha = trackingPointColor.alpha * markerOpacity)
                 Canvas(
@@ -293,8 +296,8 @@ fun ViewerCanvas(
                             imageLeft + segment.startX * coordinateScaleX * fitScale,
                             imageTop + segment.startY * coordinateScaleY * fitScale
                         )
-                        val pinWidth = with(LocalDensity.current) { 9.dp.toPx() }
-                        val pinHeight = with(LocalDensity.current) { 12.dp.toPx() }
+                        val pinWidth = anchorPinWidth
+                        val pinHeight = anchorPinHeight
                         val pinPath = Path().apply {
                             moveTo(pinTip.x, pinTip.y)
                             cubicTo(
@@ -321,7 +324,7 @@ fun ViewerCanvas(
                         drawPath(
                             path = pinPath,
                             color = Color(0xFF101820).copy(alpha = 0.9f * markerOpacity),
-                            style = Stroke(width = with(LocalDensity.current) { 1.dp.toPx() })
+                            style = Stroke(width = anchorPinOutline)
                         )
                         drawCircle(
                             color = Color(0xFF17212B).copy(alpha = markerOpacity),
