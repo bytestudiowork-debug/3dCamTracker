@@ -44,7 +44,7 @@ class VideoProxyPolicyTest {
         )
     }
     @Test
-    fun 720pVideoKeepsFullResolutionForFeatureDetail() {
+    fun video720pKeepsFullResolutionForFeatureDetail() {
         assertEquals(
             ProxyResolution.FULL,
             VideoProxyPolicy.recommendedResolution(
