@@ -21,6 +21,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -277,11 +279,54 @@ fun ViewerCanvas(
                             imageTop + segment.endY * coordinateScaleY * fitScale
                         )
                         drawLine(
-                            color = Color(segment.colorArgb),
+                            color = Color(segment.colorArgb).let { it.copy(alpha = it.alpha * markerOpacity) },
                             start = startPoint,
                             end = endPoint,
                             strokeWidth = anchorStroke,
                             cap = androidx.compose.ui.graphics.StrokeCap.Round
+                        )
+                    }
+                    // The anchor origin is the exact tip of a map-pin marker.
+                    // Draw it above the axes so it remains easy to identify while scrubbing.
+                    anchorSegments.firstOrNull()?.let { segment ->
+                        val pinTip = Offset(
+                            imageLeft + segment.startX * coordinateScaleX * fitScale,
+                            imageTop + segment.startY * coordinateScaleY * fitScale
+                        )
+                        val pinWidth = with(LocalDensity.current) { 9.dp.toPx() }
+                        val pinHeight = with(LocalDensity.current) { 12.dp.toPx() }
+                        val pinPath = Path().apply {
+                            moveTo(pinTip.x, pinTip.y)
+                            cubicTo(
+                                pinTip.x - pinWidth * 0.12f, pinTip.y - pinHeight * 0.28f,
+                                pinTip.x - pinWidth * 0.5f, pinTip.y - pinHeight * 0.48f,
+                                pinTip.x - pinWidth * 0.5f, pinTip.y - pinHeight * 0.72f
+                            )
+                            cubicTo(
+                                pinTip.x - pinWidth * 0.5f, pinTip.y - pinHeight * 1.02f,
+                                pinTip.x + pinWidth * 0.5f, pinTip.y - pinHeight * 1.02f,
+                                pinTip.x + pinWidth * 0.5f, pinTip.y - pinHeight * 0.72f
+                            )
+                            cubicTo(
+                                pinTip.x + pinWidth * 0.5f, pinTip.y - pinHeight * 0.48f,
+                                pinTip.x + pinWidth * 0.12f, pinTip.y - pinHeight * 0.28f,
+                                pinTip.x, pinTip.y
+                            )
+                            close()
+                        }
+                        drawPath(
+                            path = pinPath,
+                            color = Color(0xFFFFC857).copy(alpha = markerOpacity)
+                        )
+                        drawPath(
+                            path = pinPath,
+                            color = Color(0xFF101820).copy(alpha = 0.9f * markerOpacity),
+                            style = Stroke(width = with(LocalDensity.current) { 1.dp.toPx() })
+                        )
+                        drawCircle(
+                            color = Color(0xFF17212B).copy(alpha = markerOpacity),
+                            radius = pinWidth * 0.16f,
+                            center = Offset(pinTip.x, pinTip.y - pinHeight * 0.72f)
                         )
                     }
                     trackingPoints.forEach { point ->
