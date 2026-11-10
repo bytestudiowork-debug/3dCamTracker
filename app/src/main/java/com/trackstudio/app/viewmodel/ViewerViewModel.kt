@@ -312,6 +312,12 @@ class ViewerViewModel(
                             val viewerReady = viewerProxies.all { File(it.path ?: "").isFile }
                             val trackingReady = trackingProxies.all { File(it.path ?: "").isFile }
                             if (viewerReady && trackingReady) {
+                                // Stop source-decoder requests before swapping to the
+                                // completed proxy sequence, avoiding stale-frame races.
+                                requestJob?.cancel()
+                                requestJob = null
+                                inFlight.values.forEach { it.cancel() }
+                                inFlight.clear()
                                 frameUris = viewerProxies
                                 videoTrackingFrameUris = trackingProxies
                                 bitmapCache.evictAll()
@@ -819,9 +825,12 @@ class ViewerViewModel(
 
     private fun prefetchAhead(fromIndex: Int) {
         val ahead = aheadCount()
+        // While the proxy is being generated (or if generation fails), the
+        // original video decoder is still a valid frame source. Prefetch it too.
+        val sequenceFrameCount = if (sourceVideoUri != null) sourceVideoFrameCount else frameUris.size
         for (offset in 1..ahead) {
             val index = fromIndex + offset
-            if (index !in frameUris.indices) break
+            if (index !in 0 until sequenceFrameCount) break
             warm(index)
         }
     }
