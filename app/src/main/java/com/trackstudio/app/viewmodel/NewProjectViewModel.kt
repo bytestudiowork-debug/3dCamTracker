@@ -7,20 +7,30 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.trackstudio.app.data.io.ImageSequenceImporter
 import com.trackstudio.app.data.io.ImportProgress
+import com.trackstudio.app.data.io.ProxyGenerator
 import com.trackstudio.app.data.io.ProxyProgress
+import com.trackstudio.app.data.io.VideoSourceProbe
+import com.trackstudio.app.data.io.VideoProxyGenerator
+import com.trackstudio.app.data.io.VideoProxyPolicy
 import com.trackstudio.app.data.model.ProjectSettings
 import com.trackstudio.app.data.repository.ProjectRepository
 import com.trackstudio.app.util.FileUtils
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 class NewProjectViewModel(
     private val appContext: Context,
     private val importer: ImageSequenceImporter,
+    private val proxyGenerator: ProxyGenerator,
+    private val videoProxyGenerator: VideoProxyGenerator,
     private val repository: ProjectRepository
 ) : ViewModel() {
 
@@ -40,6 +50,9 @@ class NewProjectViewModel(
      * the imported sequence, while this URI identifies its source.
      */
     private var selectedFolderUri: Uri? = null
+    private var selectedVideoUri: Uri? = null
+    private var selectedVideoRotationDegrees: Int = 0
+    private var importJob: Job? = null
 
     /**
      * Completed project configuration.
@@ -66,12 +79,19 @@ class NewProjectViewModel(
             is NewProjectEvent.FramesFolderSelected ->
                 importFramesFolder(event.folderUri)
 
+            is NewProjectEvent.VideoSelected ->
+                importVideo(event.videoUri)
+
+            NewProjectEvent.CancelImport ->
+                cancelImport()
+
             is NewProjectEvent.ProxyEnabledChanged ->
                 _uiState.update {
                     it.copy(
                         proxySettings =
                             it.proxySettings.copy(
-                                enabled = event.enabled
+                                // Video projects always require their lightweight working copy.
+                                enabled = if (it.isVideoSource) true else event.enabled
                             )
                     )
                 }
@@ -130,77 +150,100 @@ class NewProjectViewModel(
     }
 
     private fun importFramesFolder(folderUri: Uri) {
-
-        /**
-         * Keep permission after the app restarts.
-         */
+        importJob?.cancel()
+        selectedVideoUri = null
+        selectedVideoRotationDegrees = 0
         takePersistableReadPermission(folderUri)
-
-        selectedFolderUri = folderUri
-
         _uiState.update {
-            it.copy(
-                importPhase = ImportPhase.PROBING,
-                importError = null,
-                probingProgress = 0 to 0,
-                probingCurrentName = ""
-            )
+            it.copy(importPhase = ImportPhase.PROBING, isVideoSource = false, importError = null,
+                probingProgress = 0 to 0, probingCurrentName = "")
         }
+        importJob = viewModelScope.launch { probeFolder(folderUri) }
+    }
 
-        viewModelScope.launch {
+    private fun importVideo(videoUri: Uri) {
+        importJob?.cancel()
+        takePersistableReadPermission(videoUri)
+        selectedFolderUri = null
+        selectedVideoUri = videoUri
+        selectedVideoRotationDegrees = 0
+        _uiState.update {
+            it.copy(importPhase = ImportPhase.PROBING, isVideoSource = true, importError = null,
+                probingProgress = 0 to 0, probingCurrentName = "Reading video stream metadata...")
+        }
+        importJob = viewModelScope.launch {
+            try {
+                val info = withContext(Dispatchers.IO) {
+                    VideoSourceProbe.probe(appContext, videoUri)
+                }
+                selectedVideoRotationDegrees = info.rotationDegrees
+                val footage = com.trackstudio.app.data.model.FootageInfo(
+                    frames = emptyList(), detectedPattern = "VIDEO",
+                    width = info.width, height = info.height, frameCount = info.frameCount,
+                    totalSizeBytes = info.sizeBytes, isResolutionConsistent = true
+                )
+                _uiState.update {
+                    it.copy(importPhase = ImportPhase.PROBED, footage = footage,
+                        frameRate = info.frameRate,
+                        // Video projects always get a prepared working copy. Select
+                        // the scale from source dimensions, duration, sample count and
+                        // file size; the original URI remains the project source.
+                        proxySettings = it.proxySettings.copy(
+                            enabled = true,
+                            resolution = VideoProxyPolicy.recommendedResolution(
+                                width = info.width,
+                                height = info.height,
+                                durationUs = info.durationUs,
+                                frameCount = info.frameCount,
+                                sizeBytes = info.sizeBytes
+                            )
+                        ),
+                        probingProgress = info.frameCount to info.frameCount,
+                        probingCurrentName = "Video ready — proxy is prepared after project creation")
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(importPhase = ImportPhase.FAILED,
+                        importError = "Video import failed (${error.javaClass.simpleName}): " +
+                            (generateSequence<Throwable>(error) { it.cause }.last().message ?: error.message ?: "Unable to read this video."))
+                }
+            }
+        }
+    }
 
-            importer.probeFolder(folderUri)
-                .collect { progress ->
-
-                    when (progress) {
-
-                        is ImportProgress.Probing ->
-                            _uiState.update {
-                                it.copy(
-                                    probingProgress =
-                                        progress.done to progress.total,
-
-                                    probingCurrentName =
-                                        progress.currentName
-                                )
-                            }
-
-                        is ImportProgress.Done ->
-                            _uiState.update {
-
-                                val suggestProxy =
-                                    progress
-                                        .footage
-                                        .requiresProxyByDefault
-
-                                it.copy(
-                                    importPhase =
-                                        ImportPhase.PROBED,
-
-                                    footage =
-                                        progress.footage,
-
-                                    proxySettings =
-                                        it.proxySettings.copy(
-                                            enabled =
-                                                suggestProxy ||
-                                                    it.proxySettings.enabled
-                                        )
-                                )
-                            }
-
-                        is ImportProgress.Failed ->
-                            _uiState.update {
-                                it.copy(
-                                    importPhase =
-                                        ImportPhase.FAILED,
-
-                                    importError =
-                                        progress.reason
-                                )
-                            }
+    private suspend fun probeFolder(folderUri: Uri) {
+        importer.probeFolder(folderUri).collect { progress ->
+            when (progress) {
+                is ImportProgress.Probing ->
+                    _uiState.update {
+                        it.copy(probingProgress = progress.done to progress.total,
+                            probingCurrentName = progress.currentName)
+                    }
+                is ImportProgress.Done -> {
+                    selectedFolderUri = folderUri
+                    val suggestProxy = progress.footage.requiresProxyByDefault
+                    _uiState.update {
+                        it.copy(importPhase = ImportPhase.PROBED, isVideoSource = false, footage = progress.footage,
+                            proxySettings = it.proxySettings.copy(
+                                enabled = suggestProxy || it.proxySettings.enabled))
                     }
                 }
+                is ImportProgress.Failed ->
+                    _uiState.update {
+                        it.copy(importPhase = ImportPhase.FAILED, importError = progress.reason)
+                    }
+            }
+        }
+    }
+
+    private fun cancelImport() {
+        importJob?.cancel()
+        importJob = null
+        _uiState.update {
+            it.copy(importPhase = if (it.footage.frameCount > 0) ImportPhase.PROBED else ImportPhase.IDLE,
+                importError = null, extractionCurrentName = "", probingCurrentName = "")
         }
     }
 
@@ -229,10 +272,11 @@ class NewProjectViewModel(
 
         val state = _uiState.value
         val sourceUri = selectedFolderUri
+        val videoUri = selectedVideoUri
 
         if (
             !state.canCreateProject ||
-            sourceUri == null
+            (sourceUri == null && videoUri == null)
         ) {
             return
         }
@@ -245,7 +289,10 @@ class NewProjectViewModel(
                     state.projectName.trim(),
 
                 sourceFolderUri =
-                    sourceUri.toString(),
+                    sourceUri?.toString().orEmpty(),
+
+                sourceVideoUri = selectedVideoUri?.toString().orEmpty(),
+                videoRotationDegrees = selectedVideoRotationDegrees,
 
                 footage =
                     state.footage,
@@ -263,6 +310,18 @@ class NewProjectViewModel(
                     state.colorSpace
             )
 
+        if (videoUri != null) {
+            repository.saveProjectMetadata(settings)
+            completedProjectSettings = settings
+            _uiState.update {
+                it.copy(
+                    creationPhase = CreationPhase.DONE,
+                    proxyWarning = null
+                )
+            }
+            return
+        }
+
         if (!state.proxySettings.enabled) {
 
             repository.saveProjectMetadata(settings)
@@ -271,8 +330,8 @@ class NewProjectViewModel(
 
             _uiState.update {
                 it.copy(
-                    creationPhase =
-                        CreationPhase.DONE
+                    creationPhase = CreationPhase.DONE,
+                    proxyWarning = null
                 )
             }
 
@@ -285,9 +344,14 @@ class NewProjectViewModel(
                     CreationPhase.GENERATING_PROXIES,
 
                 creationProgress =
-                    0 to state.footage.frameCount
+                    0 to state.footage.frameCount,
+                proxyWarning = null
             )
         }
+
+        // Persist the project before starting the optional proxy stage.
+        // A proxy failure must never discard the imported original footage.
+        repository.saveProjectMetadata(settings)
 
         viewModelScope.launch {
 
@@ -298,12 +362,25 @@ class NewProjectViewModel(
                     subdir = settings.proxy.cacheSubdir
                 )
 
-            importer.generateProxies(
-                footage = settings.footage,
-                scale = settings.proxy.resolution.scale,
-                jpegQuality = settings.proxy.jpegQuality,
-                outputDir = outputDir
-            ).collect { progress ->
+            try {
+                val proxyFlow = if (videoUri != null) {
+                    videoProxyGenerator.generate(
+                        uri = videoUri,
+                        frameCount = settings.footage.frameCount,
+                        rotationDegrees = settings.videoRotationDegrees,
+                        scale = settings.proxy.resolution.scale,
+                        jpegQuality = settings.proxy.jpegQuality,
+                        outputDir = outputDir
+                    )
+                } else {
+                    proxyGenerator.generate(
+                        footage = settings.footage,
+                        scale = settings.proxy.resolution.scale,
+                        jpegQuality = settings.proxy.jpegQuality,
+                        outputDir = outputDir
+                    )
+                }
+                proxyFlow.collect { progress ->
 
                 when (progress) {
 
@@ -333,16 +410,30 @@ class NewProjectViewModel(
                         }
                     }
 
-                    is ProxyProgress.Failed ->
+                    is ProxyProgress.Failed -> {
+                        // Proxy generation is an optional playback optimization.
+                        // Keep the original footage usable and let ViewerFrames fall back to it.
+                        repository.saveProjectMetadata(settings)
+                        completedProjectSettings = settings
                         _uiState.update {
                             it.copy(
-                                creationPhase =
-                                    CreationPhase.FAILED,
-
-                                importError =
-                                    progress.reason
+                                creationPhase = CreationPhase.DONE,
+                                proxyWarning = "Project created. Proxy generation failed; original footage will be used. ${progress.reason}"
                             )
                         }
+                    }
+                }
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                repository.saveProjectMetadata(settings)
+                completedProjectSettings = settings
+                _uiState.update {
+                    it.copy(
+                        creationPhase = CreationPhase.DONE,
+                        proxyWarning = "Project created. Proxy generation stopped; original footage will be used. ${error.message ?: "Unknown proxy error"}"
+                    )
                 }
             }
         }
@@ -363,11 +454,9 @@ class NewProjectViewModel(
             return NewProjectViewModel(
                 appContext = appContext,
 
-                importer =
-                    ImageSequenceImporter(
-                        resolver
-                    ),
-
+                importer = ImageSequenceImporter(resolver),
+                proxyGenerator = ProxyGenerator(resolver),
+                videoProxyGenerator = VideoProxyGenerator(appContext),
                 repository =
                     ProjectRepository(
                         appContext

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -35,6 +36,7 @@ import com.trackstudio.app.ui.theme.PanelBorder
 import com.trackstudio.app.ui.theme.PanelSurfaceRaised
 import com.trackstudio.app.ui.theme.TextPrimary
 import com.trackstudio.app.ui.theme.TextSecondary
+import com.trackstudio.app.viewmodel.CreationPhase
 import com.trackstudio.app.viewmodel.NewProjectEvent
 import com.trackstudio.app.viewmodel.NewProjectUiState
 
@@ -42,6 +44,9 @@ import com.trackstudio.app.viewmodel.NewProjectUiState
 fun ProxyPanel(
     state: NewProjectUiState,
     onEvent: (NewProjectEvent) -> Unit,
+    creationPhase: CreationPhase,
+    creationProgress: Pair<Int, Int>,
+    proxyWarning: String?,
     modifier: Modifier = Modifier
 ) {
     Panel(
@@ -49,8 +54,11 @@ fun ProxyPanel(
         modifier = modifier
     ) {
         Text(
-            text = "Proxies are lightweight preview copies generated once, on import - " +
-                "the original frames are never modified or duplicated at full size.",
+            text = if (state.isVideoSource) {
+                "Playback uses a clear, reduced-size preview copy. Tracking uses a separate working-resolution copy with its own high JPEG quality to preserve features. The original video remains untouched."
+            } else {
+                "Image-sequence import and proxy behaviour are unchanged. Original image frames remain untouched."
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary
         )
@@ -79,7 +87,7 @@ fun ProxyPanel(
             Spacer(Modifier.height(10.dp))
 
             Text(
-                text = "JPEG Quality: ${state.proxySettings.jpegQuality}",
+                text = (if (state.isVideoSource) "Preview JPEG Quality: " else "JPEG Quality: ") + state.proxySettings.jpegQuality,
                 style = MaterialTheme.typography.bodyLarge,
                 color = TextPrimary
             )
@@ -111,7 +119,7 @@ fun ProxyPanel(
 
                 Column {
                     LabeledValueRow(
-                        "Proxy Resolution",
+                        if (state.isVideoSource) "Tracking Resolution" else "Proxy Resolution",
                         "$w x $h"
                     )
 
@@ -121,6 +129,28 @@ fun ProxyPanel(
                     )
                 }
             }
+        }
+        if (creationPhase == CreationPhase.GENERATING_PROXIES) {
+            val (done, total) = creationProgress
+            Spacer(Modifier.height(14.dp))
+            Text(
+                if (total > 0) "Generating proxies: $done / $total" else "Preparing proxies...",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary
+            )
+            LinearProgressIndicator(
+                progress = { if (total <= 0) 0f else (done.toFloat() / total).coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
+        if (proxyWarning != null) {
+            Text(
+                proxyWarning,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 10.dp)
+            )
         }
     }
 }
@@ -211,7 +241,7 @@ private fun ResolutionDropdown(
 
     Column {
         Text(
-            text = "Proxy Resolution",
+            text = if (state.isVideoSource) "Tracking Resolution" else "Proxy Resolution",
             style = MaterialTheme.typography.bodyLarge,
             color = TextPrimary
         )

@@ -24,7 +24,8 @@ internal object MobileBundleAdjuster {
         featureTracks: List<CameraFeatureTrack>,
         landmarks: List<CameraLandmark>,
         poses: List<CameraPose>,
-        cameraMatrix: Mat
+        cameraMatrix: Mat,
+        onProgress: (Int, Int) -> Unit = { _, _ -> }
     ): List<CameraLandmark> {
         if (landmarks.isEmpty() || cameraMatrix.empty()) return landmarks
         val fx = cameraMatrix.get(0, 0)?.firstOrNull() ?: return landmarks
@@ -44,22 +45,23 @@ internal object MobileBundleAdjuster {
                 }
         }
 
-        return landmarks.map { landmark ->
+        return landmarks.mapIndexed { landmarkIndex, landmark ->
+            if (landmarkIndex % 16 == 0 || landmarkIndex == landmarks.lastIndex) onProgress(landmarkIndex + 1, landmarks.size)
             val observations = observationsByTrack[landmark.trackId].orEmpty()
                 .filter { (observation, _) ->
                     observation.x.isFinite() && observation.y.isFinite()
                 }
-            if (observations.size < 2) return@map landmark
+            if (observations.size < 2) return@mapIndexed landmark
 
             var point = doubleArrayOf(
                 landmark.position.x,
                 landmark.position.y,
                 landmark.position.z
             )
-            if (point.any { !it.isFinite() }) return@map landmark
+            if (point.any { !it.isFinite() }) return@mapIndexed landmark
 
             var currentCost = robustCost(point, observations, fx, fy, cx, cy)
-            if (!currentCost.isFinite()) return@map landmark
+            if (!currentCost.isFinite()) return@mapIndexed landmark
 
             repeat(MAX_ITERATIONS) {
                 val normal = Array(3) { DoubleArray(3) }

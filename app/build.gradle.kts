@@ -34,6 +34,9 @@ android {
 
     buildTypes {
         release {
+            // Optimized/minified release APK, signed with the CI debug key for device testing.
+            // Replace this with a private release keystore before Play Store publication.
+            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

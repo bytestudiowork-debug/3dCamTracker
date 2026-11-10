@@ -61,7 +61,8 @@ class MainActivity : ComponentActivity() {
         window.decorView.setOnSystemUiVisibilityChangeListener { visibility ->
             val requiredFlags =
                 View.SYSTEM_UI_FLAG_FULLSCREEN or
-                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
 
             if (visibility and requiredFlags != requiredFlags) {
                 hideSystemBars()
@@ -94,6 +95,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun hideSystemBars() {
+        val immersiveFlags =
+            View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+
+        window.decorView.systemUiVisibility = immersiveFlags
         WindowInsetsControllerCompat(window, window.decorView).apply {
             systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -439,7 +449,15 @@ private fun TrackStudioApp() {
                             )
                         }
 
+                    val originalFrameUris =
+                        remember(project.id, project.footage.frameCount) {
+                            project.footage.frames.map { it.uri }
+                        }
+
                     ViewerScreen(
+                        videoUri = project.sourceVideoUri.takeIf { it.isNotBlank() }?.let(android.net.Uri::parse),
+                        videoFrameCount = project.footage.frameCount,
+                        videoRotationDegrees = project.videoRotationDegrees,
 
                         viewModel =
                             viewerViewModel,
@@ -447,11 +465,24 @@ private fun TrackStudioApp() {
                         frameUris =
                             viewerFrameUris,
 
+                        trackingFrameUris =
+                            originalFrameUris,
+
+                        sourceWidth =
+                            project.footage.width,
+
+                        sourceHeight =
+                            project.footage.height,
+
                         fps =
                             project.frameRate,
 
                         projectName =
                             project.projectName,
+
+                        projectId = project.id,
+                        videoProxyScale = project.proxy.resolution.scale,
+                        videoProxyQuality = project.proxy.jpegQuality,
 
                         onBack = {
 

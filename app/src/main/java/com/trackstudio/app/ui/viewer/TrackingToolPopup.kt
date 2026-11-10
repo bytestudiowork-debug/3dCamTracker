@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,17 +18,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -51,34 +56,37 @@ internal fun TrackingToolPopup(
     currentFrame: Int,
     frameCount: Int,
     trackPointCount: Int,
-    verificationLineCount: Int,
-    showCube: Boolean,
+    anchorSegmentCount: Int,
+    showAnchor: Boolean,
+    anchorX: Double,
+    anchorY: Double,
+    anchorZ: Double,
+    defaultAnchorX: Double,
+    defaultAnchorY: Double,
+    defaultAnchorZ: Double,
+    anchorAxisLength: Double,
+    anchorLineWidthDp: Float,
+    onAnchorChanged: (Boolean) -> Unit,
+    onAnchorPositionChanged: (Double, Double, Double) -> Unit,
+    onAnchorAxisLengthChanged: (Double) -> Unit,
+    onAnchorLineWidthChanged: (Float) -> Unit,
+    onResetAnchor: () -> Unit,
     showTracks: Boolean,
     markerColorArgb: Int,
     markerSizeDp: Float,
     markerOutline: Boolean,
-    cubeColorArgb: Int,
-    cubeRotationX: Float,
-    cubeRotationY: Float,
-    cubeRotationZ: Float,
-    cubeScale: Float,
-    cubeSize: Float,
-    cubeLineWidth: Float,
-    onCubeColorChanged: (Int) -> Unit,
-    onCubeRotationXChanged: (Float) -> Unit,
-    onCubeRotationYChanged: (Float) -> Unit,
-    onCubeRotationZChanged: (Float) -> Unit,
-    onCubeScaleChanged: (Float) -> Unit,
-    onCubeSizeChanged: (Float) -> Unit,
-    onCubeLineWidthChanged: (Float) -> Unit,
+    markerOpacity: Float,
     onMarkerColorChanged: (Int) -> Unit,
     onMarkerSizeChanged: (Float) -> Unit,
     onMarkerOutlineChanged: (Boolean) -> Unit,
-    onCubeChanged: (Boolean) -> Unit,
+    onMarkerOpacityChanged: (Float) -> Unit,
     onTracksChanged: (Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
     var dragOffset by remember(title) { mutableStateOf(Offset.Zero) }
+    var xText by remember(title, anchorX) { mutableStateOf(anchorX.toString()) }
+    var yText by remember(title, anchorY) { mutableStateOf(anchorY.toString()) }
+    var zText by remember(title, anchorZ) { mutableStateOf(anchorZ.toString()) }
 
     Box(
         Modifier.fillMaxSize().background(Color(0x99000000)).clickable(onClick = onDismiss),
@@ -86,6 +94,7 @@ internal fun TrackingToolPopup(
     ) {
         Column(
             Modifier.offset { IntOffset(dragOffset.x.roundToInt(), dragOffset.y.roundToInt()) }
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
                 .fillMaxWidth(0.88f)
                 .clip(RoundedCornerShape(14.dp))
                 .background(PanelBackground)
@@ -102,47 +111,105 @@ internal fun TrackingToolPopup(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(title, color = TextPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                Icon(
-                    Icons.Outlined.Close,
-                    contentDescription = "Close",
-                    tint = TextSecondary,
-                    modifier = Modifier.size(22.dp).clickable(onClick = onDismiss)
-                )
+                Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextSecondary,
+                    modifier = Modifier.size(22.dp).clickable(onClick = onDismiss))
             }
             Column(
                 Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (title == "3D Test") {
-                    PopupSwitch("Show diagnostic cube", showCube, onCubeChanged)
-                    Text("Cube colour", color = TextPrimary, fontSize = 13.sp)
-                    CubeColourSelector(cubeColorArgb, onCubeColorChanged)
-                    CubeAngleSlider("Rotation X", cubeRotationX, onCubeRotationXChanged)
-                    CubeAngleSlider("Rotation Y", cubeRotationY, onCubeRotationYChanged)
-                    CubeAngleSlider("Rotation Z", cubeRotationZ, onCubeRotationZChanged)
-                    CubeValueSlider("Scale", cubeScale, 0.25f..3f, onCubeScaleChanged, "%.2fx")
-                    CubeValueSlider("Size", cubeSize, 0.5f..2f, onCubeSizeChanged, "%.2fx")
-                    CubeValueSlider("Line thickness", cubeLineWidth, 1f..5f, onCubeLineWidthChanged, "%.1f dp")
-                    PopupMetric("Projected wireframe lines", verificationLineCount.toString())
-                    androidx.compose.material3.TextButton(onClick = {
-                        onCubeColorChanged(0xFF00E5FF.toInt())
-                        onCubeRotationXChanged(0f); onCubeRotationYChanged(0f); onCubeRotationZChanged(0f)
-                        onCubeScaleChanged(1f); onCubeSizeChanged(1f); onCubeLineWidthChanged(1.8f)
-                    }) { Text("Reset cube settings", color = AccentPrimary) }
+                if (title == "Anchor") {
+                    PopupSwitch("Show world anchor", showAnchor, onAnchorChanged)
+                    Text("WORLD POSITION", color = TextSecondary, fontSize = 11.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = xText, onValueChange = {
+                                xText = it
+                                it.toDoubleOrNull()?.let { x ->
+                                    onAnchorPositionChanged(x, yText.toDoubleOrNull() ?: anchorY, zText.toDoubleOrNull() ?: anchorZ)
+                                }
+                            },
+                            label = { Text("X") }, singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = yText, onValueChange = {
+                                yText = it
+                                it.toDoubleOrNull()?.let { y ->
+                                    onAnchorPositionChanged(xText.toDoubleOrNull() ?: anchorX, y, zText.toDoubleOrNull() ?: anchorZ)
+                                }
+                            },
+                            label = { Text("Y") }, singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = zText, onValueChange = {
+                                zText = it
+                                it.toDoubleOrNull()?.let { z ->
+                                    onAnchorPositionChanged(xText.toDoubleOrNull() ?: anchorX, yText.toDoubleOrNull() ?: anchorY, z)
+                                }
+                            },
+                            label = { Text("Z") }, singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Text("Axis length · ${String.format(java.util.Locale.US, "%.3f", anchorAxisLength)} units",
+                        color = TextPrimary, fontSize = 12.sp)
+                    Slider(
+                        value = anchorAxisLength.toFloat().coerceIn(0.001f, 1f),
+                        onValueChange = { onAnchorAxisLengthChanged(it.toDouble()) },
+                        valueRange = 0.001f..1f
+                    )
+                    Text("Axis thickness · ${String.format(java.util.Locale.US, "%.1f", anchorLineWidthDp)} dp",
+                        color = TextPrimary, fontSize = 12.sp)
+                    Slider(
+                        value = anchorLineWidthDp.coerceIn(1f, 5f),
+                        onValueChange = onAnchorLineWidthChanged,
+                        valueRange = 1f..5f
+                    )
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("X red · Y green · Z blue", color = TextSecondary, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                        Text("$anchorSegmentCount axes", color = AccentPrimary, fontSize = 11.sp)
+                    }
+                    TextButton(onClick = {
+                        xText = defaultAnchorX.toString()
+                        yText = defaultAnchorY.toString()
+                        zText = defaultAnchorZ.toString()
+                        onResetAnchor()
+                    }) { Text("Reset to detected anchor", color = AccentPrimary) }
                     Text(
-                        "This diagnostic cube is projected through the solved camera poses. It is not a physical object track. The current reconstruction uses approximate camera intrinsics and provisional translation scale, so visual alignment is a diagnostic—not a final matchmove guarantee.",
+                        "The anchor is a fixed point in the reconstructed world and is projected through each solved camera. XYZ values use relative scene units; absolute scale is not calibrated yet.",
                         color = TextSecondary, fontSize = 11.sp
+                    )
+                    Text("Overlay opacity · ${(markerOpacity * 100).toInt()}%", color = TextPrimary, fontSize = 12.sp)
+                    Slider(
+                        value = markerOpacity.coerceIn(0.15f, 1f),
+                        onValueChange = onMarkerOpacityChanged,
+                        valueRange = 0.15f..1f
                     )
                 } else {
                     PopupSwitch("Show feature tracks", showTracks, onTracksChanged)
                     Text("Marker colour", color = TextPrimary, fontSize = 13.sp)
                     MarkerColourSelector(markerColorArgb, onMarkerColorChanged)
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Marker size", color = TextPrimary, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                        Text("${String.format("%.1f", markerSizeDp)} dp", color = AccentPrimary, fontSize = 12.sp)
+                        Text("Marker size", color = TextPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                        Text("${String.format(java.util.Locale.US, "%.1f", markerSizeDp)} dp", color = AccentPrimary, fontSize = 11.sp)
                     }
-                    Slider(value = markerSizeDp.coerceIn(2f, 5.5f), onValueChange = onMarkerSizeChanged, valueRange = 2f..5.5f)
+                    Slider(
+                        value = markerSizeDp.coerceIn(2f, 5.5f),
+                        onValueChange = onMarkerSizeChanged,
+                        valueRange = 2f..5.5f
+                    )
                     PopupSwitch("Dark outline", markerOutline, onMarkerOutlineChanged)
+                    Text("Overlay opacity · ${(markerOpacity * 100).toInt()}%", color = TextPrimary, fontSize = 12.sp)
+                    Slider(
+                        value = markerOpacity.coerceIn(0.15f, 1f),
+                        onValueChange = onMarkerOpacityChanged,
+                        valueRange = 0.15f..1f
+                    )
                     PopupMetric("Frame", "$currentFrame / $frameCount")
                     PopupMetric("Tracked observations on frame", trackPointCount.toString())
                     Text(
@@ -155,44 +222,18 @@ internal fun TrackingToolPopup(
     }
 }
 
-
-@Composable
-private fun CubeColourSelector(selectedArgb: Int, onSelected: (Int) -> Unit) {
-    val colours = listOf(0xFF00E5FF.toInt(), 0xFFFFD740.toInt(), 0xFF76FF03.toInt(), 0xFFFF4081.toInt(), 0xFFB388FF.toInt(), 0xFFFFFFFF.toInt(), 0xFFFF8A50.toInt(), 0xFF448AFF.toInt())
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
-        colours.forEach { argb ->
-            val selected = argb == selectedArgb
-            Box(Modifier.size(25.dp).clip(CircleShape).background(Color(argb.toLong() and 0xFFFFFFFFL)).border(if (selected) 2.dp else 1.dp, if (selected) TextPrimary else TextSecondary.copy(alpha = 0.45f), CircleShape).clickable { onSelected(argb) })
-        }
-    }
-}
-
-@Composable
-private fun CubeAngleSlider(label: String, value: Float, onChange: (Float) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, color = TextPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f))
-        Text("${value.toInt()}°", color = AccentPrimary, fontSize = 11.sp)
-    }
-    Slider(value = value.coerceIn(0f, 360f), onValueChange = onChange, valueRange = 0f..360f)
-}
-
-@Composable
-private fun CubeValueSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit, format: String) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, color = TextPrimary, fontSize = 12.sp, modifier = Modifier.weight(1f))
-        Text(String.format(java.util.Locale.US, format, value), color = AccentPrimary, fontSize = 11.sp)
-    }
-    Slider(value = value.coerceIn(range.start, range.endInclusive), onValueChange = onChange, valueRange = range)
-}
 @Composable
 private fun MarkerColourSelector(selectedArgb: Int, onSelected: (Int) -> Unit) {
     val colours = listOf(0xFF00E5FF.toInt(), 0xFFFFD740.toInt(), 0xFF76FF03.toInt(), 0xFFFF4081.toInt(), 0xFFB388FF.toInt(), 0xFFFFFFFF.toInt())
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         colours.forEach { argb ->
             val selected = argb == selectedArgb
-            Box(Modifier.size(27.dp).clip(CircleShape).background(Color(argb.toLong() and 0xFFFFFFFFL))
-                .border(if (selected) 2.dp else 1.dp, if (selected) TextPrimary else TextSecondary.copy(alpha = 0.45f), CircleShape)
-                .clickable { onSelected(argb) })
+            Box(
+                Modifier.size(27.dp).clip(CircleShape)
+                    .background(Color(argb.toLong() and 0xFFFFFFFFL))
+                    .border(if (selected) 2.dp else 1.dp, if (selected) TextPrimary else TextSecondary.copy(alpha = 0.45f), CircleShape)
+                    .clickable { onSelected(argb) }
+            )
         }
     }
 }

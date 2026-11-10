@@ -9,6 +9,11 @@ import org.opencv.core.Mat
  * from the provider after processing it. The camera matrix is borrowed and must
  * not be released or mutated by an implementation.
  */
+enum class ReconstructionMode(val label: String) {
+    CUSTOM("Custom"),
+    GLOBAL("Global")
+}
+
 interface ReconstructionEngine {
     suspend fun solve(
         frameCount: Int,

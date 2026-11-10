@@ -176,7 +176,8 @@ fun ChromeButton(
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
     filled: Boolean = false,
-    height: Dp = 40.dp
+    height: Dp = 40.dp,
+    enabled: Boolean = true
 ) {
     val shape = RoundedCornerShape(8.dp)
 
@@ -192,7 +193,7 @@ fun ChromeButton(
                 ),
                 shape
             )
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement =
@@ -202,7 +203,7 @@ fun ChromeButton(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = if (filled) Color.White else TextPrimary,
+                tint = if (!enabled) TextDisabled else if (filled) Color.White else TextPrimary,
                 modifier = Modifier.size(18.dp)
             )
 
@@ -213,7 +214,7 @@ fun ChromeButton(
 
         Text(
             text = text,
-            color = if (filled) Color.White else TextPrimary,
+            color = if (!enabled) TextDisabled else if (filled) Color.White else TextPrimary,
             fontSize = 12.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis

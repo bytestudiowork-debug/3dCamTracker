@@ -18,20 +18,26 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Divider
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import android.view.View
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.trackstudio.app.data.model.ProjectSettings
@@ -69,6 +75,12 @@ fun NewProjectScreen(
         mutableStateOf(SettingsTab.FOOTAGE)
     }
 
+    LaunchedEffect(state.creationPhase) {
+        if (state.creationPhase == CreationPhase.GENERATING_PROXIES) {
+            selectedTab = SettingsTab.PROXY
+        }
+    }
+
     /*
      * Creation is complete.
      *
@@ -90,6 +102,37 @@ fun NewProjectScreen(
                 usePlatformDefaultWidth = false
             )
     ) {
+        val dialogView = LocalView.current
+        val dialogWindow = (dialogView.parent as? DialogWindowProvider)?.window
+        DisposableEffect(dialogWindow) {
+            if (dialogWindow != null) {
+                WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
+                val controller = WindowInsetsControllerCompat(dialogWindow, dialogWindow.decorView)
+                controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                val immersiveFlags =
+                    View.SYSTEM_UI_FLAG_FULLSCREEN or
+                        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                        View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                        View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                val required = View.SYSTEM_UI_FLAG_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                val listener = View.OnSystemUiVisibilityChangeListener { visibility ->
+                    if (visibility and required != required) {
+                        dialogWindow.decorView.systemUiVisibility = immersiveFlags
+                        controller.hide(WindowInsetsCompat.Type.systemBars())
+                    }
+                }
+                dialogWindow.decorView.setOnSystemUiVisibilityChangeListener(listener)
+                dialogWindow.decorView.systemUiVisibility = immersiveFlags
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+            }
+            onDispose {
+                dialogWindow?.decorView?.setOnSystemUiVisibilityChangeListener(null)
+            }
+        }
 
         Column(
             modifier =
@@ -159,10 +202,11 @@ fun NewProjectScreen(
                             SettingsTab.PROXY ->
                                 ProxyPanel(
                                     state = state,
-                                    onEvent =
-                                        viewModel::onEvent,
-                                    modifier =
-                                        Modifier.fillMaxWidth()
+                                    onEvent = viewModel::onEvent,
+                                    creationPhase = state.creationPhase,
+                                    creationProgress = state.creationProgress,
+                                    proxyWarning = state.proxyWarning,
+                                    modifier = Modifier.fillMaxWidth()
                                 )
 
                             SettingsTab.PROJECT ->
@@ -331,41 +375,6 @@ private fun BottomBar(
                 .fillMaxWidth()
                 .padding(14.dp)
     ) {
-
-        if (
-            state.creationPhase ==
-            CreationPhase.GENERATING_PROXIES
-        ) {
-
-            val (done, total) =
-                state.creationProgress
-
-            Text(
-                text =
-                    "Generating proxies: $done / $total",
-                style =
-                    MaterialTheme.typography.bodyMedium,
-                color = TextSecondary
-            )
-
-            LinearProgressIndicator(
-                progress = {
-                    if (total == 0) {
-                        0f
-                    } else {
-                        done.toFloat() /
-                            total.toFloat()
-                    }
-                },
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            top = 4.dp,
-                            bottom = 10.dp
-                        )
-            )
-        }
 
         Row(
             modifier =

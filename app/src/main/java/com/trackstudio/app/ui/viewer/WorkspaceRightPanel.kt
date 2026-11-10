@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.DeleteOutline
@@ -58,6 +59,7 @@ import com.trackstudio.app.ui.theme.PanelSurfaceRaised
 import com.trackstudio.app.ui.theme.TextPrimary
 import com.trackstudio.app.ui.theme.TextSecondary
 import com.trackstudio.app.tracking.CameraTrackingProgress
+import com.trackstudio.app.tracking.ReconstructionMode
 import com.trackstudio.app.viewmodel.CameraTrackingSummary
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -73,11 +75,15 @@ fun WorkspaceRightPanel(
     fps: Double,
     frameCount: Int,
     isAutoTracking: Boolean,
+    isTrackingPaused: Boolean,
     trackingProgress: CameraTrackingProgress?,
     trackingError: String?,
     trackingSummary: CameraTrackingSummary?,
+    reconstructionMode: ReconstructionMode,
+    onReconstructionModeChanged: (ReconstructionMode) -> Unit,
     onAutoTrack: () -> Unit,
     onCancelAutoTrack: () -> Unit,
+    onToggleTrackingPause: () -> Unit,
     onOpen3DTest: () -> Unit,
     onOpenTrackerTools: () -> Unit,
     modifier: Modifier = Modifier
@@ -121,7 +127,7 @@ fun WorkspaceRightPanel(
         }
 
         when (selectedTab) {
-            "Tracking" -> TrackingToolsCard(isAutoTracking, trackingProgress, trackingError, trackingSummary, onAutoTrack, onCancelAutoTrack)
+            "Tracking" -> TrackingToolsCard(isAutoTracking, isTrackingPaused, trackingProgress, trackingError, trackingSummary, reconstructionMode, onReconstructionModeChanged, onAutoTrack, onCancelAutoTrack, onToggleTrackingPause)
             "Tools" -> QuickActionsCard(onOpen3DTest, onOpenTrackerTools)
             else -> ProjectSummaryCard(projectName, fps, frameCount)
         }
@@ -215,15 +221,38 @@ private fun ProjectDetailRow(label: String, value: String) {
 @Composable
 private fun TrackingToolsCard(
     isAutoTracking: Boolean,
+    isTrackingPaused: Boolean,
     progress: CameraTrackingProgress?,
     error: String?,
     summary: CameraTrackingSummary?,
+    reconstructionMode: ReconstructionMode,
+    onReconstructionModeChanged: (ReconstructionMode) -> Unit,
     onAutoTrack: () -> Unit,
-    onCancelAutoTrack: () -> Unit
+    onCancelAutoTrack: () -> Unit,
+    onToggleTrackingPause: () -> Unit
 ) {
     var detailsExpanded by remember { mutableStateOf(false) }
     PanelCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ReconstructionMode.values().forEach { mode ->
+                    Box(
+                        Modifier.weight(1f)
+                            .clip(RoundedCornerShape(7.dp))
+                            .background(if (reconstructionMode == mode) AccentPrimary else PanelSurfaceRaised)
+                            .clickable(enabled = !isAutoTracking) { onReconstructionModeChanged(mode) }
+                            .padding(vertical = 9.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            mode.label,
+                            color = if (reconstructionMode == mode) Color.White else TextSecondary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
             Box(
                 modifier = Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(8.dp))
                     .background(if (isAutoTracking) PanelSurfaceRaised else AccentPrimary)
@@ -241,10 +270,37 @@ private fun TrackingToolsCard(
                         Box(Modifier.fillMaxWidth().padding(top = 5.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(PanelBorder)) {
                             Box(Modifier.fillMaxWidth((progress?.fraction ?: 0f).coerceIn(0f, 1f)).height(3.dp).background(AccentPrimary))
                         }
+                        Row(Modifier.fillMaxWidth().padding(top = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(progress?.phase ?: "Preparing", color = TextSecondary, fontSize = 9.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                            Text(((progress?.fraction ?: 0f) * 100).roundToInt().toString() + "%", color = TextSecondary, fontSize = 9.sp)
+                        }
                     }
                 }
             }
-            if (isAutoTracking) ChromeButton(text = "Cancel Tracking", icon = Icons.Filled.Stop, onClick = onCancelAutoTrack, modifier = Modifier.fillMaxWidth(), height = 40.dp)
+            if (isAutoTracking) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ChromeButton(
+                        text = "Pause",
+                        icon = Icons.Filled.Pause,
+                        onClick = { if (!isTrackingPaused) onToggleTrackingPause() },
+                        modifier = Modifier.weight(1f),
+                        height = 40.dp,
+                        enabled = !isTrackingPaused
+                    )
+                    ChromeButton(
+                        text = "Resume",
+                        icon = Icons.Filled.PlayArrow,
+                        onClick = { if (isTrackingPaused) onToggleTrackingPause() },
+                        modifier = Modifier.weight(1f),
+                        height = 40.dp,
+                        enabled = isTrackingPaused
+                    )
+                }
+                ChromeButton(text = "Cancel Tracking", icon = Icons.Filled.Stop, onClick = onCancelAutoTrack, modifier = Modifier.fillMaxWidth(), height = 40.dp)
+                if (isTrackingPaused) {
+                    Text("Paused at a solver checkpoint. Keep the app open; progress remains in memory.", color = TextSecondary, fontSize = 10.sp)
+                }
+            }
             if (error != null) Text(error, color = AccentError, fontSize = 11.sp)
             if (summary != null) {
                 Text("${summary.registeredCameras}/${summary.totalFrames} cameras registered · ${summary.landmarkCount} 3D points", color = TextPrimary, fontSize = 11.sp)
@@ -271,7 +327,7 @@ private fun TrackingToolsCard(
             )
             ProjectDetailRow("Initial pair", summary?.initialPairFrames?.let { "${it.first + 1} – ${it.second + 1}" } ?: "—")
             ProjectDetailRow(
-                "GLOMAP global positioning",
+                "Global positioning",
                 summary?.let {
                     if (it.globalPositioningApplied) "Applied · ${it.globalPositioningIterations} iterations"
                     else it.globalPositioningStatus
@@ -401,7 +457,7 @@ private fun QuickActionsCard(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            ToolEntry("3D Test", "Preview the solved-camera diagnostic cube", Icons.Outlined.ViewInAr, onOpen3DTest)
+            ToolEntry("Anchor", "Set a world-space XYZ anchor and coordinate axes", Icons.Outlined.GpsFixed, onOpen3DTest)
             ToolEntry("Tracker Tools", "Inspect feature tracks and overlay visibility", Icons.Outlined.ScatterPlot, onOpenTrackerTools)
         }
     }

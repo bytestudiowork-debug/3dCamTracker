@@ -23,6 +23,21 @@ object ViewerFrames {
         project: ProjectSettings
     ): List<Uri> {
 
+        if (project.sourceVideoUri.isNotBlank()) {
+            if (!project.proxy.enabled || project.footage.frameCount <= 0) return emptyList()
+            val videoProxyDir = File(
+                FileUtils.projectCacheDir(context, project.id),
+                project.proxy.cacheSubdir
+            )
+            val videoProxies = (0 until project.footage.frameCount)
+                .map { index -> File(videoProxyDir, "proxy_%05d.jpg".format(index)) }
+            return if (videoProxies.all { it.isFile && it.length() > 0L }) {
+                videoProxies.map { Uri.fromFile(it) }
+            } else {
+                emptyList()
+            }
+        }
+
         val frames = project.footage.frames
         val originals = frames.map { it.uri }
 

@@ -1,8 +1,11 @@
 #include <jni.h>
+#include <android/log.h>
 #include <ceres/ceres.h>
+#include "glomap_progress_callback.h"
 
 #include <algorithm>
 #include <cmath>
+#include <exception>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -48,7 +51,9 @@ Java_com_trackstudio_app_tracking_glomap_GlomapNativeSolver_nativeSolve(
         jdoubleArray initial_scales_array,
         jdoubleArray loss_scales_array,
         jint max_iterations,
-        jint num_threads) {
+        jint num_threads,
+        jobject progress_listener) {
+    try {
     if (!frame_centers_array || !points_array || !frame_indices_array ||
         !track_indices_array || !directions_array || !initial_scales_array ||
         !loss_scales_array) {
@@ -147,15 +152,22 @@ Java_com_trackstudio_app_tracking_glomap_GlomapNativeSolver_nativeSolve(
 
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::SPARSE_SCHUR;
-    options.preconditioner_type = ceres::CLUSTER_TRIDIAGONAL;
+    // SPARSE_SCHUR performs a direct sparse Schur solve; iterative-Schur
+    // preconditioners (including CLUSTER_TRIDIAGONAL) do not apply here.
+    // Keep the upstream objective, robust losses, gauge constraints and
+    // parameter ordering unchanged.
     options.max_num_iterations = std::min(max_iterations, 100);
     options.num_threads = num_threads;
     options.function_tolerance = 1e-5;
     options.minimizer_progress_to_stdout = false;
     options.linear_solver_ordering = ordering;
 
+    trackstudio::JniProgressCallback progress_callback(env, progress_listener, std::min(max_iterations, 100));
+    if (progress_callback.valid()) options.callbacks.push_back(&progress_callback);
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
+    const std::string solver_report = summary.FullReport();
+    __android_log_print(ANDROID_LOG_INFO, "TrackStudioGlobalPosition", "%s", solver_report.c_str());
 
     if (!summary.IsSolutionUsable() || !AllFinite(frame_centers) ||
         !AllFinite(points) || !AllFinite(scales)) {
@@ -178,4 +190,11 @@ Java_com_trackstudio_app_tracking_glomap_GlomapNativeSolver_nativeSolve(
                                   output.data());
     }
     return result;
+    } catch (const std::exception& error) {
+        __android_log_print(ANDROID_LOG_ERROR, "TrackStudioGlobalPosition", "Native solve exception: %s", error.what());
+        return env->NewDoubleArray(0);
+    } catch (...) {
+        __android_log_print(ANDROID_LOG_ERROR, "TrackStudioGlobalPosition", "Unknown native solve exception.");
+        return env->NewDoubleArray(0);
+    }
 }

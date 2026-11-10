@@ -12,6 +12,8 @@ data class ProjectSettings(
     val id: String = UUID.randomUUID().toString(),
     val projectName: String = "",
     val sourceFolderUri: String = "",
+    val sourceVideoUri: String = "",
+    val videoRotationDegrees: Int = 0,
     val footage: FootageInfo = FootageInfo.EMPTY,
     val proxy: ProxySettings = ProxySettings(),
     val frameRate: Double = 24.0,
@@ -22,6 +24,6 @@ data class ProjectSettings(
     val isReadyToCreate: Boolean
         get() =
             projectName.isNotBlank() &&
-                sourceFolderUri.isNotBlank() &&
+                (sourceFolderUri.isNotBlank() || sourceVideoUri.isNotBlank()) &&
                 footage.frameCount > 0
 }

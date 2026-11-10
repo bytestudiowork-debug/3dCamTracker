@@ -21,6 +21,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -31,7 +33,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalDensity
 import com.trackstudio.app.tracking.CameraFeatureObservation
-import com.trackstudio.app.tracking.TrackingVerificationSegment
+import com.trackstudio.app.tracking.TrackingAnchorSegment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import com.trackstudio.app.ui.theme.PanelSurface
 import com.trackstudio.app.ui.theme.TextSecondary
@@ -58,14 +60,11 @@ fun ViewerCanvas(
     trackingPointColor: Color = Color(0xFF00E5FF),
     trackingPointSizeDp: Float = 3f,
     trackingPointOutline: Boolean = true,
-    trackingVerificationSegments: List<TrackingVerificationSegment> = emptyList(),
-    verificationColor: Color = Color(0xFF00E5FF),
-    verificationRotationX: Float = 0f,
-    verificationRotationY: Float = 0f,
-    verificationRotationZ: Float = 0f,
-    verificationScale: Float = 1f,
-    verificationSize: Float = 1f,
-    verificationStrokeDp: Float = 1.8f,
+    trackingPointOpacity: Float = 0.78f,
+    anchorSegments: List<TrackingAnchorSegment> = emptyList(),
+    trackingCoordinateWidth: Int = 0,
+    trackingCoordinateHeight: Int = 0,
+    anchorStrokeDp: Float = 2.2f,
     isLoading: Boolean,
     modifier: Modifier = Modifier,
     requestedZoom: Float? = null,
@@ -247,14 +246,19 @@ fun ViewerCanvas(
                     }
             )
 
-            if (trackingPoints.isNotEmpty() || trackingVerificationSegments.isNotEmpty()) {
+            if (trackingPoints.isNotEmpty() || anchorSegments.isNotEmpty()) {
                 // Compact 3DEqualizer-inspired track reticle: fine arms, a
                 // clear center gap and a tiny center target. Keep dimensions in
                 // screen-independent dp so markers stay unobtrusive on phones.
                 val markerHalfSize = with(LocalDensity.current) { trackingPointSizeDp.coerceIn(2f, 5.5f).dp.toPx() }
                 val markerStroke = with(LocalDensity.current) { (trackingPointSizeDp * 0.34f).coerceIn(0.9f, 1.5f).dp.toPx() }
                 val markerOutline = markerStroke + with(LocalDensity.current) { 1.1.dp.toPx() }
-                val verificationStroke = with(LocalDensity.current) { verificationStrokeDp.coerceIn(1f, 5f).dp.toPx() }
+                val anchorStroke = with(LocalDensity.current) { anchorStrokeDp.coerceIn(1f, 5f).dp.toPx() }
+                val anchorPinWidth = with(LocalDensity.current) { 9.dp.toPx() }
+                val anchorPinHeight = with(LocalDensity.current) { 12.dp.toPx() }
+                val anchorPinOutline = with(LocalDensity.current) { 1.dp.toPx() }
+                val markerOpacity = trackingPointOpacity.coerceIn(0f, 1f)
+                val visibleMarkerColor = trackingPointColor.copy(alpha = trackingPointColor.alpha * markerOpacity)
                 Canvas(
                     modifier = Modifier.fillMaxSize().graphicsLayer {
                         scaleX = transform.zoom
@@ -266,32 +270,71 @@ fun ViewerCanvas(
                     val fitScale = min(size.width / bitmap.width, size.height / bitmap.height)
                     val imageLeft = (size.width - bitmap.width * fitScale) * 0.5f
                     val imageTop = (size.height - bitmap.height * fitScale) * 0.5f
-                    if (trackingVerificationSegments.isNotEmpty()) {
-                        val points = trackingVerificationSegments.flatMap { listOf(it.startX to it.startY, it.endX to it.endY) }
-                        val centerX = points.map { it.first }.average().toFloat()
-                        val centerY = points.map { it.second }.average().toFloat()
-                        val rx = Math.toRadians(verificationRotationX.toDouble()).toFloat()
-                        val ry = Math.toRadians(verificationRotationY.toDouble()).toFloat()
-                        val rz = Math.toRadians(verificationRotationZ.toDouble()).toFloat()
-                        val sx = kotlin.math.cos(ry) * kotlin.math.cos(rz)
-                        val shearX = kotlin.math.sin(rx) * 0.35f
-                        val sy = kotlin.math.cos(rx) * kotlin.math.cos(rz)
-                        val shearY = kotlin.math.sin(ry) * 0.35f
-                        val displayScale = verificationScale.coerceIn(0.25f, 3f) * verificationSize.coerceIn(0.5f, 2f)
-                        fun transformed(x: Float, y: Float): Offset {
-                            val dx = (x - centerX) * displayScale
-                            val dy = (y - centerY) * displayScale
-                            val rotatedX = dx * sx - dy * kotlin.math.sin(rz) + dy * shearX
-                            val rotatedY = dx * kotlin.math.sin(rz) + dy * sy + dx * shearY
-                            return Offset(imageLeft + (centerX + rotatedX) * fitScale, imageTop + (centerY + rotatedY) * fitScale)
+                    val coordinateScaleX = if (trackingCoordinateWidth > 0) bitmap.width.toFloat() / trackingCoordinateWidth else 1f
+                    val coordinateScaleY = if (trackingCoordinateHeight > 0) bitmap.height.toFloat() / trackingCoordinateHeight else 1f
+                    anchorSegments.forEach { segment ->
+                        val startPoint = Offset(
+                            imageLeft + segment.startX * coordinateScaleX * fitScale,
+                            imageTop + segment.startY * coordinateScaleY * fitScale
+                        )
+                        val endPoint = Offset(
+                            imageLeft + segment.endX * coordinateScaleX * fitScale,
+                            imageTop + segment.endY * coordinateScaleY * fitScale
+                        )
+                        drawLine(
+                            color = Color(segment.colorArgb).let { it.copy(alpha = it.alpha * markerOpacity) },
+                            start = startPoint,
+                            end = endPoint,
+                            strokeWidth = anchorStroke,
+                            cap = androidx.compose.ui.graphics.StrokeCap.Round
+                        )
+                    }
+                    // The anchor origin is the exact tip of a map-pin marker.
+                    // Draw it above the axes so it remains easy to identify while scrubbing.
+                    anchorSegments.firstOrNull()?.let { segment ->
+                        val pinTip = Offset(
+                            imageLeft + segment.startX * coordinateScaleX * fitScale,
+                            imageTop + segment.startY * coordinateScaleY * fitScale
+                        )
+                        val pinWidth = anchorPinWidth
+                        val pinHeight = anchorPinHeight
+                        val pinPath = Path().apply {
+                            moveTo(pinTip.x, pinTip.y)
+                            cubicTo(
+                                pinTip.x - pinWidth * 0.12f, pinTip.y - pinHeight * 0.28f,
+                                pinTip.x - pinWidth * 0.5f, pinTip.y - pinHeight * 0.48f,
+                                pinTip.x - pinWidth * 0.5f, pinTip.y - pinHeight * 0.72f
+                            )
+                            cubicTo(
+                                pinTip.x - pinWidth * 0.5f, pinTip.y - pinHeight * 1.02f,
+                                pinTip.x + pinWidth * 0.5f, pinTip.y - pinHeight * 1.02f,
+                                pinTip.x + pinWidth * 0.5f, pinTip.y - pinHeight * 0.72f
+                            )
+                            cubicTo(
+                                pinTip.x + pinWidth * 0.5f, pinTip.y - pinHeight * 0.48f,
+                                pinTip.x + pinWidth * 0.12f, pinTip.y - pinHeight * 0.28f,
+                                pinTip.x, pinTip.y
+                            )
+                            close()
                         }
-                        trackingVerificationSegments.forEach { segment ->
-                            drawLine(color = verificationColor, start = transformed(segment.startX, segment.startY), end = transformed(segment.endX, segment.endY), strokeWidth = verificationStroke, cap = androidx.compose.ui.graphics.StrokeCap.Round)
-                        }
+                        drawPath(
+                            path = pinPath,
+                            color = Color(0xFFFFC857).copy(alpha = markerOpacity)
+                        )
+                        drawPath(
+                            path = pinPath,
+                            color = Color(0xFF101820).copy(alpha = 0.9f * markerOpacity),
+                            style = Stroke(width = anchorPinOutline)
+                        )
+                        drawCircle(
+                            color = Color(0xFF17212B).copy(alpha = markerOpacity),
+                            radius = pinWidth * 0.16f,
+                            center = Offset(pinTip.x, pinTip.y - pinHeight * 0.72f)
+                        )
                     }
                     trackingPoints.forEach { point ->
-                        val x = imageLeft + point.x.toFloat() * fitScale
-                        val y = imageTop + point.y.toFloat() * fitScale
+                        val x = imageLeft + point.x.toFloat() * coordinateScaleX * fitScale
+                        val y = imageTop + point.y.toFloat() * coordinateScaleY * fitScale
                         if (x >= imageLeft && x <= imageLeft + bitmap.width * fitScale &&
                             y >= imageTop && y <= imageTop + bitmap.height * fitScale
                         ) {
@@ -304,12 +347,12 @@ fun ViewerCanvas(
                             )
                             arms.forEach { (start, end) ->
                                 if (trackingPointOutline) drawLine(
-                                    color = Color.Black.copy(alpha = 0.92f),
+                                    color = Color.Black.copy(alpha = 0.92f * markerOpacity),
                                     start = start, end = end, strokeWidth = markerOutline,
                                     cap = androidx.compose.ui.graphics.StrokeCap.Square
                                 )
                                 drawLine(
-                                    color = trackingPointColor,
+                                    color = visibleMarkerColor,
                                     start = start, end = end, strokeWidth = markerStroke,
                                     cap = androidx.compose.ui.graphics.StrokeCap.Square
                                 )
