@@ -5,9 +5,9 @@ import com.trackstudio.app.data.model.ProxyResolution
 /**
  * Conservative automatic working-resolution policy for video projects.
  *
- * Video originals are never modified. Half resolution is the default;
- * quarter resolution is selected for footage whose pixel count, duration,
- * frame count or compressed size makes full-resolution tracking expensive.
+ * Video originals are never modified. Small footage stays full-size to retain
+ * feature detail; 1080p/1440p footage is reduced by half, while long/high-load
+ * 4K footage uses a quarter-size tracking copy. The viewer copy is kept larger.
  */
 object VideoProxyPolicy {
     fun recommendedViewerScale(width: Int, height: Int, trackingScale: Float): Float {
