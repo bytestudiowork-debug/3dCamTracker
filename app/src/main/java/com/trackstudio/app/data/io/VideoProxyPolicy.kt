@@ -27,17 +27,22 @@ object VideoProxyPolicy {
         frameCount: Int,
         sizeBytes: Long
     ): ProxyResolution {
-        val pixels = width.coerceAtLeast(0).toLong() * height.coerceAtLeast(0).toLong()
+        val safeWidth = width.coerceAtLeast(0)
+        val safeHeight = height.coerceAtLeast(0)
+        val pixels = safeWidth.toLong() * safeHeight.toLong()
         val durationSeconds = durationUs.coerceAtLeast(0L) / 1_000_000.0
-        val largeHighResolutionClip = pixels >= 8_000_000L && durationSeconds >= 45.0
-        val veryLongClip = durationSeconds >= 300.0
-        val veryLargeFile = sizeBytes >= 1_000_000_000L
-        val veryDenseClip = frameCount >= 6_000
 
-        return if (largeHighResolutionClip || veryLongClip || veryLargeFile || veryDenseClip) {
-            ProxyResolution.QUARTER
-        } else {
-            ProxyResolution.HALF
+        // Keep small footage at its native size so feature detection does not
+        // lose corners and texture. 1080p/1440p footage is reduced by half.
+        // Only high-resolution footage receives the quarter-size tracking copy.
+        val highResolution = pixels >= 8_000_000L
+        val highResolutionWorkload = durationSeconds >= 30.0 ||
+            frameCount >= 900 || sizeBytes >= 500_000_000L
+
+        return when {
+            highResolution && highResolutionWorkload -> ProxyResolution.QUARTER
+            safeWidth > 1280 || safeHeight > 720 -> ProxyResolution.HALF
+            else -> ProxyResolution.FULL
         }
     }
 }
