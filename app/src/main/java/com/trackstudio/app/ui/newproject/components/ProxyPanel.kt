@@ -55,7 +55,7 @@ fun ProxyPanel(
     ) {
         Text(
             text = if (state.isVideoSource) {
-                "The editor opens immediately. Video proxies are prepared in the background, and tracking uses this reduced working resolution while the original video remains untouched."
+                "Playback uses a clear, reduced-size preview copy. Tracking uses a separate working-resolution copy with its own high JPEG quality to preserve features. The original video remains untouched."
             } else {
                 "Image-sequence import and proxy behaviour are unchanged. Original image frames remain untouched."
             },
@@ -87,7 +87,7 @@ fun ProxyPanel(
             Spacer(Modifier.height(10.dp))
 
             Text(
-                text = "JPEG Quality: ${state.proxySettings.jpegQuality}",
+                text = (if (state.isVideoSource) "Preview JPEG Quality: " else "JPEG Quality: ") + state.proxySettings.jpegQuality,
                 style = MaterialTheme.typography.bodyLarge,
                 color = TextPrimary
             )
@@ -119,7 +119,7 @@ fun ProxyPanel(
 
                 Column {
                     LabeledValueRow(
-                        "Proxy Resolution",
+                        if (state.isVideoSource) "Tracking Resolution" else "Proxy Resolution",
                         "$w x $h"
                     )
 
@@ -241,7 +241,7 @@ private fun ResolutionDropdown(
 
     Column {
         Text(
-            text = "Proxy Resolution",
+            text = if (state.isVideoSource) "Tracking Resolution" else "Proxy Resolution",
             style = MaterialTheme.typography.bodyLarge,
             color = TextPrimary
         )
