@@ -184,6 +184,12 @@ internal fun TrackingToolPopup(
                         "The anchor is a fixed point in the reconstructed world and is projected through each solved camera. XYZ values use relative scene units; absolute scale is not calibrated yet.",
                         color = TextSecondary, fontSize = 11.sp
                     )
+                    Text("Overlay transparency · ${(markerOpacity * 100).toInt()}%", color = TextPrimary, fontSize = 12.sp)
+                    Slider(
+                        value = markerOpacity.coerceIn(0.15f, 1f),
+                        onValueChange = onMarkerOpacityChanged,
+                        valueRange = 0.15f..1f
+                    )
                 } else {
                     PopupSwitch("Show feature tracks", showTracks, onTracksChanged)
                     Text("Marker colour", color = TextPrimary, fontSize = 13.sp)
